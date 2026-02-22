@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import date
 import base64
 from fpdf import FPDF
+import plotly.express as px
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Gestión Iglesia Luz y Vida", layout="wide", page_icon="⛪")
@@ -318,13 +319,42 @@ if login():
                         df_fil = df_fil[df_fil['Red'].isin(red_filtro)]
 
                     if not df_fil.empty:
+                        # 1. CÁLCULOS POR MÉTODO DE PAGO
+                        efectivo_bs = df_fil[df_fil['Metodo'] == 'Bolivares en Efectivo']['Total_Bs'].sum()
+                        efectivo_usd_monto = df_fil[df_fil['Metodo'] == 'USD en Efectivo']['Monto_Orig'].sum() # El USD real
+                        efectivo_usd_bs = df_fil[df_fil['Metodo'] == 'USD en Efectivo']['Total_Bs'].sum() # Para la torta
+                        transf_pm = df_fil[df_fil['Metodo'] == 'Transferencia / PM']['Total_Bs'].sum()
+                        punto = df_fil[df_fil['Metodo'] == 'Punto']['Total_Bs'].sum()
+
+                        st.subheader("💰 Resumen por Método de Pago")
+                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                        col_m1.metric("Efectivo Bs", f"{efectivo_bs:,.2f} Bs")
+                        col_m2.metric("Efectivo Divisas", f"${efectivo_usd_monto:,.2f} USD")
+                        col_m3.metric("Transferencias / PM", f"{transf_pm:,.2f} Bs")
+                        col_m4.metric("Punto", f"{punto:,.2f} Bs")
+
+                        # 2. GRÁFICO DE TORTA
+                        datos_torta = pd.DataFrame({
+                            "Método": ["Efectivo Bs", "Efectivo Divisas (en Bs)", "Transferencia / PM", "Punto"],
+                            "Monto": [efectivo_bs, efectivo_usd_bs, transf_pm, punto]
+                        })
+                        datos_torta = datos_torta[datos_torta["Monto"] > 0] # Filtramos los que están en 0
+                        
+                        if not datos_torta.empty:
+                            fig = px.pie(datos_torta, values="Monto", names="Método", title="Distribución de Ingresos (Proporción en Bolívares)", hole=0.3)
+                            st.plotly_chart(fig, use_container_width=True)
+
+                        st.markdown("---")
+
+                        # 3. CÁLCULOS INSTITUCIONALES
                         total_general = df_fil['Total_Bs'].sum()
                         apostol = df_fil['Diezmo_10'].sum()
                         df_presb = df_fil[df_fil['Red'] != "Red de Zabulom"]
                         presbiterio = df_presb['Diezmo_10'].sum()
 
+                        st.subheader("🏛️ Resumen Institucional")
                         m1, m2, m3 = st.columns(3)
-                        m1.metric("Ingreso Total (Filtro)", f"{total_general:,.2f} Bs")
+                        m1.metric("INGRESO TOTAL", f"{total_general:,.2f} Bs")
                         m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
                         m3.metric("PRESBITERIO", f"{presbiterio:,.2f} Bs")
 
