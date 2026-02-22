@@ -75,7 +75,6 @@ if login():
 
     rol = st.session_state.usuario_actual
     
-    # Añadimos la pestaña de Personal si es admin/tesoreria
     titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "📊 INFORMES", "👥 PERSONAL"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
     tabs = st.tabs(titulos)
 
@@ -130,7 +129,6 @@ if login():
                                 df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
                             except: df_update = nuevo
                             
-                            # Asegurar columnas
                             for col in columnas_orden:
                                 if col not in df_update.columns: df_update[col] = ""
                             
@@ -142,11 +140,10 @@ if login():
 
             st.markdown("---")
             st.subheader("📋 Gestión de Registros (Editar / Borrar)")
-            st.info("💡 Haz doble clic en una celda para editarla. Para borrar, selecciona la fila a la izquierda y presiona 'Supr' en tu teclado.")
+            st.info("💡 Haz doble clic en una celda para editarla. Para borrar, selecciona la fila a la izquierda y presiona 'Supr'.")
             try:
                 df_gestion = conn.read(worksheet="INGRESOS", ttl="10m")
                 if df_gestion is not None and not df_gestion.empty:
-                    # Editor interactivo
                     df_editado = st.data_editor(df_gestion, num_rows="dynamic", use_container_width=True, key="gestor_ingresos")
                     if st.button("🔄 APLICAR CAMBIOS EN LA BASE DE DATOS", type="primary"):
                         conn.update(worksheet="INGRESOS", data=df_editado)
@@ -160,13 +157,11 @@ if login():
         with tabs[2]:
             st.header("📤 Registro de Egresos / Pagos")
             
-            # Intentar cargar empleados desde la pestaña PERSONAL
             try:
                 df_emp = conn.read(worksheet="EMPLEADOS", ttl="10m")
                 if df_emp is not None and not df_emp.empty:
-                    # Combina Nombre, Apellido y Cargo para el listado
                     lista_empleados = (df_emp['Nombre'].astype(str) + " " + df_emp['Apellido'].astype(str) + " - " + df_emp['Cargo'].astype(str)).tolist()
-                else: lista_empleados = ["Sin empleados registrados (Ve a la pestaña Personal)"]
+                else: lista_empleados = ["Sin empleados registrados"]
             except: lista_empleados = ["Debe crear la pestaña EMPLEADOS en su Excel"]
 
             with st.container(border=True):
@@ -225,20 +220,17 @@ if login():
                     f_fin = c_f2.date_input("Hasta", date.today())
                     red_filtro = c_f3.multiselect("Filtrar Redes", ["TODAS"] + REDES, default="TODAS")
 
-                # Aplicar Filtros
                 mask = (df_inf['Fecha'] >= f_ini) & (df_inf['Fecha'] <= f_fin)
                 df_fil = df_inf.loc[mask]
                 if "TODAS" not in red_filtro:
                     df_fil = df_fil[df_fil['Red'].isin(red_filtro)]
 
                 if not df_fil.empty:
-                    # Cálculos Apóstol / Presbiterio
                     total_general = df_fil['Total_Bs'].sum()
                     apostol = df_fil['Diezmo_10'].sum()
                     df_presb = df_fil[df_fil['Red'] != "Red de Zabulom"]
                     presbiterio = df_presb['Diezmo_10'].sum()
 
-                    # Mostrar Cuadros de Resumen
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Ingreso Total (Filtro)", f"{total_general:,.2f} Bs")
                     m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
@@ -247,14 +239,10 @@ if login():
                     st.markdown("---")
                     st.subheader("📈 Resumen Detallado por las 16 Redes")
                     
-                    # Agrupar datos por Red y sumar
                     resumen_redes = df_fil.groupby('Red').agg({'Total_Bs': 'sum', 'Diezmo_10': 'sum'}).reset_index()
-                    
-                    # Forzar a que aparezcan las 16 redes aunque tengan 0 Bs
                     df_todas_redes = pd.DataFrame({'Red': REDES})
                     resumen_final = pd.merge(df_todas_redes, resumen_redes, on='Red', how='left').fillna(0)
                     
-                    # Mostrar la tabla formateada
                     st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
 
                 else:
@@ -264,11 +252,11 @@ if login():
         except Exception as e:
             st.error(f"Error al procesar informes: {e}")
 
-    # --- PESTAÑA PERSONAL (Solo Admin/Tesoreria) ---
+    # --- PESTAÑA PERSONAL ---
     if rol in ["admin", "tesoreria"]:
         with tabs[idx_pers]:
             st.header("👥 Gestión de Empleados y Beneficiarios")
-            st.write("Agrega a las personas que recibirán pagos. Estos nombres aparecerán en la lista desplegable de la pestaña EGRESOS.")
+            st.write("Agrega a las personas que recibirán pagos.")
             try:
                 df_empleados = conn.read(worksheet="EMPLEADOS", ttl="10m")
                 if df_empleados is None or df_empleados.empty:
@@ -276,17 +264,13 @@ if login():
             except:
                 df_empleados = pd.DataFrame(columns=["Nombre", "Apellido", "Cargo"])
             
-            # Editor para la base de datos de Empleados
             df_emp_editado = st.data_editor(df_empleados, num_rows="dynamic", use_container_width=True, key="gestor_empleados")
             
             if st.button("💾 GUARDAR LISTA DE PERSONAL", type="primary"):
-                # 1. Limpiar valores vacíos (NaN) que rompen la API de Google
+                # LIMPIEZA DE CELDAS VACÍAS PARA EVITAR EL ERROR DE API
                 df_limpio = df_emp_editado.fillna("")
                 
-                # 2. Enviar los datos limpios a Google Sheets
                 conn.update(worksheet="EMPLEADOS", data=df_limpio)
-                
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
-
