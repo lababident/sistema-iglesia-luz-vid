@@ -126,7 +126,7 @@ if login():
                                 "Diezmo_10": float(total_bs * 0.10)
                             }])
                             try:
-                                df_actual = conn.read(worksheet="INGRESOS", ttl=0)
+                                df_actual = conn.read(worksheet="INGRESOS", ttl="10m")
                                 df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
                             except: df_update = nuevo
                             
@@ -144,7 +144,7 @@ if login():
             st.subheader("📋 Gestión de Registros (Editar / Borrar)")
             st.info("💡 Haz doble clic en una celda para editarla. Para borrar, selecciona la fila a la izquierda y presiona 'Supr' en tu teclado.")
             try:
-                df_gestion = conn.read(worksheet="INGRESOS", ttl=0)
+                df_gestion = conn.read(worksheet="INGRESOS", ttl="10m")
                 if df_gestion is not None and not df_gestion.empty:
                     # Editor interactivo
                     df_editado = st.data_editor(df_gestion, num_rows="dynamic", use_container_width=True, key="gestor_ingresos")
@@ -162,7 +162,7 @@ if login():
             
             # Intentar cargar empleados desde la pestaña PERSONAL
             try:
-                df_emp = conn.read(worksheet="EMPLEADOS", ttl=0)
+                df_emp = conn.read(worksheet="EMPLEADOS", ttl="10m")
                 if df_emp is not None and not df_emp.empty:
                     # Combina Nombre, Apellido y Cargo para el listado
                     lista_empleados = (df_emp['Nombre'].astype(str) + " " + df_emp['Apellido'].astype(str) + " - " + df_emp['Cargo'].astype(str)).tolist()
@@ -187,7 +187,7 @@ if login():
                             "Total_Bs": float(monto_usd_e * tasa_e), "Observaciones": nota_e
                         }])
                         try:
-                            df_eg_actual = conn.read(worksheet="EGRESOS", ttl=0)
+                            df_eg_actual = conn.read(worksheet="EGRESOS", ttl="10m")
                             df_eg_final = pd.concat([df_eg_actual, nuevo_egreso], ignore_index=True) if df_eg_actual is not None else nuevo_egreso
                         except: df_eg_final = nuevo_egreso
                         
@@ -200,7 +200,7 @@ if login():
             st.markdown("---")
             st.subheader("📋 Vista Previa de Egresos")
             try:
-                df_egr_view = conn.read(worksheet="EGRESOS", ttl=0)
+                df_egr_view = conn.read(worksheet="EGRESOS", ttl="10m")
                 if df_egr_view is not None and not df_egr_view.empty:
                     st.dataframe(df_egr_view.tail(15), use_container_width=True)
                 else: st.write("Aún no hay egresos registrados.")
@@ -215,7 +215,7 @@ if login():
     with tabs[idx_inf]:
         st.header("📊 Reportes y Auditoría")
         try:
-            df_inf = conn.read(worksheet="INGRESOS", ttl=0)
+            df_inf = conn.read(worksheet="INGRESOS", ttl="10m")
             if df_inf is not None and not df_inf.empty:
                 df_inf['Fecha'] = pd.to_datetime(df_inf['Fecha']).dt.date
                 
@@ -270,7 +270,7 @@ if login():
             st.header("👥 Gestión de Empleados y Beneficiarios")
             st.write("Agrega a las personas que recibirán pagos. Estos nombres aparecerán en la lista desplegable de la pestaña EGRESOS.")
             try:
-                df_empleados = conn.read(worksheet="EMPLEADOS", ttl=0)
+                df_empleados = conn.read(worksheet="EMPLEADOS", ttl="10m")
                 if df_empleados is None or df_empleados.empty:
                     df_empleados = pd.DataFrame(columns=["Nombre", "Apellido", "Cargo"])
             except:
@@ -289,3 +289,4 @@ if login():
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
+
