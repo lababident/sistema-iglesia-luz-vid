@@ -128,27 +128,44 @@ if login():
 
                 if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     try:
-                        # Leer con protección
-                        df_act = conn.read(worksheet="INGRESOS", ttl=0)
-                        
-                        nuevo = pd.DataFrame([{
-                            "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
-                            "Metodo": met_sel, "Banco": banco_v, "Referencia": ref_v, 
-                            "Fecha_Op": f_op_v, "Monto_Orig": monto_in, "Tasa": tasa_v, 
-                            "Total_Bs": total_bs, "Diezmo_10": total_bs*0.10
+                        # Creamos el registro en un DataFrame
+                        nuevo_registro = pd.DataFrame([{
+                            "Fecha": str(f_rec), 
+                            "Red": red_sel, 
+                            "Clasificacion": tipo_sel, 
+                            "Metodo": met_sel, 
+                            "Banco": banco_v, 
+                            "Referencia": str(ref_v), 
+                            "Fecha_Op": str(f_op_v), 
+                            "Monto_Orig": float(monto_in), 
+                            "Tasa": float(tasa_v), 
+                            "Total_Bs": float(total_bs), 
+                            "Diezmo_10": float(total_bs * 0.10)
                         }])
                         
-                        # Concatenar y actualizar
-                        df_upd = pd.concat([df_act, nuevo], ignore_index=True)
-                        conn.update(worksheet="INGRESOS", data=df_upd)
+                        # PASO CLAVE: Leemos la base actual con un try interno
+                        try:
+                            df_actual = conn.read(worksheet="INGRESOS", ttl=0)
+                        except:
+                            # Si la hoja está totalmente vacía, creamos una base con columnas
+                            df_actual = pd.DataFrame(columns=nuevo_registro.columns)
+
+                        # Concatenamos y enviamos
+                        df_final = pd.concat([df_actual, nuevo_registro], ignore_index=True)
+                        
+                        # Limpieza final: quitar filas totalmente vacías que causan el error 400
+                        df_final = df_final.dropna(how='all')
+
+                        conn.update(worksheet="INGRESOS", data=df_final)
                         
                         st.cache_data.clear()
-                        st.success("✅ ¡Registro guardado exitosamente en la nube!")
+                        st.balloons() # ¡Celebración si funciona!
+                        st.success("✅ ¡Registro guardado exitosamente!")
                         st.rerun()
+                        
                     except Exception as e:
-                        st.error("❌ Error de conexión con Google Sheets. Reintenta en unos segundos.")
-                        st.info("Verifica que el archivo no esté siendo editado manualmente en este momento.")
-
+                        st.error(f"❌ Error técnico: {e}")
+                        st.info("Revisa que los encabezados en Google Sheets sean exactos.")
         # PESTAÑA EGRESOS
         with tabs[2]:
             st.header("📤 Pagos a Personal")
@@ -229,4 +246,5 @@ if login():
                     st.download_button("📥 Descargar PDF", data=pdf_out, file_name="Reporte.pdf")
             else: st.warning("Sin datos.")
         except Exception as e: st.error(f"Error: {e}")
+
 
