@@ -66,7 +66,7 @@ def aplicar_estetica():
 # --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    conn = st.connection("my_database", type=GSheetsConnection)
 
     # Variables Maestras
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
@@ -166,6 +166,7 @@ if login():
                     except Exception as e:
                         st.error(f"❌ Error técnico: {e}")
                         st.info("Revisa que los encabezados en Google Sheets sean exactos.")
+
         # PESTAÑA EGRESOS
         with tabs[2]:
             st.header("📤 Pagos a Personal")
@@ -246,5 +247,6 @@ if login():
                     st.download_button("📥 Descargar PDF", data=pdf_out, file_name="Reporte.pdf")
             else: st.warning("Sin datos.")
         except Exception as e: st.error(f"Error: {e}")
+
 
 
