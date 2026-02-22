@@ -280,7 +280,12 @@ if login():
             df_emp_editado = st.data_editor(df_empleados, num_rows="dynamic", use_container_width=True, key="gestor_empleados")
             
             if st.button("💾 GUARDAR LISTA DE PERSONAL", type="primary"):
-                conn.update(worksheet="EMPLEADOS", data=df_emp_editado)
+                # 1. Limpiar valores vacíos (NaN) que rompen la API de Google
+                df_limpio = df_emp_editado.fillna("")
+                
+                # 2. Enviar los datos limpios a Google Sheets
+                conn.update(worksheet="EMPLEADOS", data=df_limpio)
+                
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
