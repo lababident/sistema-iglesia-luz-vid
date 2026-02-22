@@ -117,7 +117,7 @@ if login():
 
                 if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     try:
-                        # 1. Crear el DataFrame con los datos
+                        # 1. Crear el nuevo registro
                         nuevo_df = pd.DataFrame([{
                             "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
                             "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v), 
@@ -126,16 +126,16 @@ if login():
                             "Diezmo_10": float(total_bs*0.10)
                         }])
                         
-                        # 2. Intentar leer de forma flexible
+                        # 2. Intentamos leer de forma muy simple. Si falla, enviamos solo el nuevo.
                         try:
-                            # Intentamos leer la pestaña 'INGRESOS'
                             df_existente = conn.read(worksheet="INGRESOS", ttl=0)
+                            # Eliminamos columnas vacías que puedan venir de Google Sheets
+                            df_existente = df_existente.dropna(axis=1, how='all')
                             df_final = pd.concat([df_existente, nuevo_df], ignore_index=True)
-                        except Exception as read_err:
-                            # Si no encuentra la pestaña, la crea desde cero
+                        except:
                             df_final = nuevo_df
 
-                        # 3. Guardar cambios
+                        # 3. Guardar (Usando la Service Account que ya confirmamos que es Editora)
                         conn.update(worksheet="INGRESOS", data=df_final)
                         
                         st.cache_data.clear()
@@ -144,8 +144,8 @@ if login():
                         st.rerun()
                         
                     except Exception as e:
-                        # Esto nos dirá el error REAL si vuelve a fallar
-                        st.error(f"Error detectado: {str(e)}")
+                        # Ahora sí veremos el error escrito si algo falla
+                        st.error(f"Error técnico: {str(e)}")
 
         with tabs[2]:
             st.header("📤 Pagos a Personal")
@@ -209,4 +209,5 @@ if login():
                 else: st.info("No hay datos en el rango.")
             else: st.warning("Esperando datos...")
         except: st.info("Cargando sistema...")
+
 
