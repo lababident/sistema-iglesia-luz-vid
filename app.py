@@ -128,44 +128,37 @@ if login():
 
                 if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     try:
-                        # Creamos el registro en un DataFrame
-                        nuevo_registro = pd.DataFrame([{
-                            "Fecha": str(f_rec), 
-                            "Red": red_sel, 
-                            "Clasificacion": tipo_sel, 
-                            "Metodo": met_sel, 
-                            "Banco": banco_v, 
-                            "Referencia": str(ref_v), 
-                            "Fecha_Op": str(f_op_v), 
-                            "Monto_Orig": float(monto_in), 
-                            "Tasa": float(tasa_v), 
-                            "Total_Bs": float(total_bs), 
-                            "Diezmo_10": float(total_bs * 0.10)
+                        # 1. Creamos el nuevo dato
+                        nuevo = pd.DataFrame([{
+                            "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
+                            "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v), 
+                            "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in), 
+                            "Tasa": float(tasa_v), "Total_Bs": float(total_bs), 
+                            "Diezmo_10": float(total_bs*0.10)
                         }])
                         
-                        # PASO CLAVE: Leemos la base actual con un try interno
+                        # 2. Intentamos leer lo que ya existe
                         try:
-                            df_actual = conn.read(worksheet="INGRESOS", ttl=0)
+                            df_act = conn.read(worksheet="INGRESOS", ttl=0)
+                            # Si la hoja tiene datos pero faltan columnas, las alineamos
+                            df_final = pd.concat([df_act, nuevo], ignore_index=True)
                         except:
-                            # Si la hoja está totalmente vacía, creamos una base con columnas
-                            df_actual = pd.DataFrame(columns=nuevo_registro.columns)
-
-                        # Concatenamos y enviamos
-                        df_final = pd.concat([df_actual, nuevo_registro], ignore_index=True)
+                            # Si la hoja está totalmente vacía o no se puede leer, usamos solo el nuevo
+                            df_final = nuevo
                         
-                        # Limpieza final: quitar filas totalmente vacías que causan el error 400
+                        # 3. Limpiar cualquier fila vacía antes de enviar
                         df_final = df_final.dropna(how='all')
 
+                        # 4. ACTUALIZAR (Aquí es donde la Service Account hace su magia)
                         conn.update(worksheet="INGRESOS", data=df_final)
                         
                         st.cache_data.clear()
-                        st.balloons() # ¡Celebración si funciona!
-                        st.success("✅ ¡Registro guardado exitosamente!")
+                        st.balloons()
+                        st.success("✅ ¡Gloria a Dios! Registro guardado correctamente.")
                         st.rerun()
                         
                     except Exception as e:
-                        st.error(f"❌ Error técnico: {e}")
-                        st.info("Revisa que los encabezados en Google Sheets sean exactos.")
+                        st.error(f"❌ Error al guardar: {e}")
 
         # PESTAÑA EGRESOS
         with tabs[2]:
@@ -247,6 +240,7 @@ if login():
                     st.download_button("📥 Descargar PDF", data=pdf_out, file_name="Reporte.pdf")
             else: st.warning("Sin datos.")
         except Exception as e: st.error(f"Error: {e}")
+
 
 
 
