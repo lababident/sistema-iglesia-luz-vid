@@ -66,7 +66,6 @@ def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
     pdf = FPDF()
     pdf.add_page()
     
-    # Título
     pdf.set_font("Arial", 'B', 15)
     pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
     pdf.set_font("Arial", 'B', 12)
@@ -75,7 +74,6 @@ def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
     pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
     pdf.ln(5)
 
-    # Encabezados de la tabla
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(22, 8, "Fecha", 1, 0, 'C')
     pdf.cell(60, 8, "Beneficiario", 1, 0, 'C')
@@ -84,15 +82,12 @@ def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
     pdf.cell(30, 8, "Total Bs", 1, 0, 'C')
     pdf.cell(38, 8, "Nota", 1, 1, 'C')
 
-    # Filas de la tabla
     pdf.set_font("Arial", '', 8)
     for i, row in df.iterrows():
         fecha_str = str(row.get('Fecha', ''))
-        # Limitar caracteres para que no se deforme la tabla en el PDF
         ben_str = str(row.get('Empleado_Beneficiario', ''))[:30] 
         obs_str = str(row.get('Observaciones', ''))[:20]
         
-        # Evitar errores con tildes en el PDF
         ben_str = ben_str.encode('latin-1', 'replace').decode('latin-1')
         obs_str = obs_str.encode('latin-1', 'replace').decode('latin-1')
 
@@ -108,9 +103,45 @@ def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
         pdf.cell(38, 8, obs_str, 1, 1, 'L')
 
     pdf.ln(5)
-    # Total Final
     pdf.set_font("Arial", 'B', 11)
     pdf.cell(190, 8, txt=f"TOTAL PAGADO: {total_bs:,.2f} Bs", ln=True, align='R')
+
+    return pdf.output(dest="S").encode("latin-1")
+
+def generar_pdf_ingresos(df_resumen, f_ini, f_fin, total_bs, apostol, presbiterio):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    pdf.set_font("Arial", 'B', 15)
+    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(190, 8, txt="Reporte de Ingresos (Diezmos y Ofrendas)", ln=True, align='C')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
+    pdf.ln(5)
+
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(63, 8, txt=f"INGRESO TOTAL: {total_bs:,.2f} Bs", border=1, align='C')
+    pdf.cell(63, 8, txt=f"APOSTOL (10%): {apostol:,.2f} Bs", border=1, align='C')
+    pdf.cell(64, 8, txt=f"PRESBITERIO: {presbiterio:,.2f} Bs", border=1, ln=True, align='C')
+    pdf.ln(5)
+
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(90, 8, "Red", 1, 0, 'C')
+    pdf.cell(50, 8, "Total Ingresado (Bs)", 1, 0, 'C')
+    pdf.cell(50, 8, "Diezmo 10% (Bs)", 1, 1, 'C')
+
+    pdf.set_font("Arial", '', 9)
+    for i, row in df_resumen.iterrows():
+        red_str = str(row.get('Red', ''))
+        red_str = red_str.encode('latin-1', 'replace').decode('latin-1')
+        
+        bs_str = f"{float(row.get('Total_Bs', 0)):,.2f}"
+        diezmo_str = f"{float(row.get('Diezmo_10', 0)):,.2f}"
+
+        pdf.cell(90, 8, red_str, 1, 0, 'L')
+        pdf.cell(50, 8, bs_str, 1, 0, 'R')
+        pdf.cell(50, 8, diezmo_str, 1, 1, 'R')
 
     return pdf.output(dest="S").encode("latin-1")
 
@@ -266,11 +297,10 @@ if login():
     with tabs[idx_inf]:
         st.header("📊 Reportes y Auditoría")
         
-        # Selector de tipo de reporte
-        tipo_reporte = st.radio("Seleccione el módulo a consultar:", ["📥 Reporte de INGRESOS", "📤 Reporte de EGRESOS (PDF)"], horizontal=True)
+        tipo_reporte = st.radio("Seleccione el módulo a consultar:", ["📥 Reporte de INGRESOS (PDF)", "📤 Reporte de EGRESOS (PDF)"], horizontal=True)
         st.markdown("---")
 
-        if tipo_reporte == "📥 Reporte de INGRESOS":
+        if tipo_reporte == "📥 Reporte de INGRESOS (PDF)":
             try:
                 df_inf = conn.read(worksheet="INGRESOS", ttl="10m")
                 if df_inf is not None and not df_inf.empty:
@@ -296,7 +326,7 @@ if login():
                         m1, m2, m3 = st.columns(3)
                         m1.metric("Ingreso Total (Filtro)", f"{total_general:,.2f} Bs")
                         m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
-                        m3.metric("PRESBITERIO (Sin Zabulón)", f"{presbiterio:,.2f} Bs")
+                        m3.metric("PRESBITERIO", f"{presbiterio:,.2f} Bs")
 
                         st.markdown("---")
                         st.subheader("📈 Resumen Detallado por las 16 Redes")
@@ -305,6 +335,15 @@ if login():
                         resumen_final = pd.merge(df_todas_redes, resumen_redes, on='Red', how='left').fillna(0)
                         
                         st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
+                        
+                        pdf_data_ingresos = generar_pdf_ingresos(resumen_final, f_ini, f_fin, total_general, apostol, presbiterio)
+                        st.download_button(
+                            label="📄 DESCARGAR REPORTE DE INGRESOS EN PDF",
+                            data=pdf_data_ingresos,
+                            file_name=f"Reporte_Ingresos_{f_ini}_al_{f_fin}.pdf",
+                            mime="application/pdf",
+                            type="primary"
+                        )
                     else:
                         st.warning("No hay datos para estos filtros.")
                 else:
@@ -312,7 +351,6 @@ if login():
             except Exception as e: st.error(f"Error al procesar ingresos: {e}")
 
         else:
-            # LÓGICA DE REPORTE DE EGRESOS CON PDF
             try:
                 df_egr_inf = conn.read(worksheet="EGRESOS", ttl="10m")
                 if df_egr_inf is not None and not df_egr_inf.empty:
@@ -331,7 +369,6 @@ if login():
                         st.metric("TOTAL PAGADO EN EL PERÍODO (Bs)", f"{total_egresos:,.2f} Bs")
                         st.dataframe(df_fil_egr, use_container_width=True)
 
-                        # BOTÓN DE DESCARGA PDF
                         pdf_data = generar_pdf_egresos(df_fil_egr, fe_ini, fe_fin, total_egresos)
                         st.download_button(
                             label="📄 DESCARGAR REPORTE EN PDF",
