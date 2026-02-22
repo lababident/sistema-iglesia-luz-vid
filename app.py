@@ -117,6 +117,7 @@ if login():
 
                 if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     try:
+                        # 1. Crear el DataFrame con los datos
                         nuevo_df = pd.DataFrame([{
                             "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
                             "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v), 
@@ -124,16 +125,27 @@ if login():
                             "Tasa": float(tasa_v), "Total_Bs": float(total_bs), 
                             "Diezmo_10": float(total_bs*0.10)
                         }])
-                        df_actual = conn.read(worksheet="INGRESOS", ttl=0)
-                        df_final = pd.concat([df_actual, nuevo_df], ignore_index=True)
+                        
+                        # 2. Intentar leer de forma flexible
+                        try:
+                            # Intentamos leer la pestaña 'INGRESOS'
+                            df_existente = conn.read(worksheet="INGRESOS", ttl=0)
+                            df_final = pd.concat([df_existente, nuevo_df], ignore_index=True)
+                        except Exception as read_err:
+                            # Si no encuentra la pestaña, la crea desde cero
+                            df_final = nuevo_df
+
+                        # 3. Guardar cambios
                         conn.update(worksheet="INGRESOS", data=df_final)
+                        
                         st.cache_data.clear()
                         st.balloons()
-                        st.success("✅ ¡Registro Guardado!")
+                        st.success("✅ ¡Gloria a Dios! Registro guardado.")
                         st.rerun()
+                        
                     except Exception as e:
-                        st.error(f"Error: {e}")
-                        st.info("⚠️ REVISA: El botón azul 'Compartir' en Excel debe incluir el correo de la Service Account como EDITOR.")
+                        # Esto nos dirá el error REAL si vuelve a fallar
+                        st.error(f"Error detectado: {str(e)}")
 
         with tabs[2]:
             st.header("📤 Pagos a Personal")
@@ -197,3 +209,4 @@ if login():
                 else: st.info("No hay datos en el rango.")
             else: st.warning("Esperando datos...")
         except: st.info("Cargando sistema...")
+
