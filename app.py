@@ -3,12 +3,11 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import date
 import base64
-from fpdf import FPDF
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Gestión Iglesia Luz y Vida", layout="wide", page_icon="⛪")
 
-# --- SISTEMA DE LOGIN Y ROLES ---
+# --- SISTEMA DE LOGIN ---
 USUARIOS_VALIDOS = {
     "admin": "luzvida2026",
     "tesoreria": "iglesia123",
@@ -18,7 +17,6 @@ USUARIOS_VALIDOS = {
 def login():
     if "autenticado" not in st.session_state:
         st.session_state.autenticado = False
-
     if not st.session_state.autenticado:
         col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
         with col_l2:
@@ -37,35 +35,19 @@ def login():
     return True
 
 # --- FUNCIONES ESTÉTICAS ---
-def get_base64_of_bin_file(bin_file):
-    try:
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except: return ""
-
 def aplicar_estetica():
-    logo_b64 = get_base64_of_bin_file('logo.png')
-    logo_html = f"data:image/png;base64,{logo_b64}" if logo_b64 else ""
-
-    st.markdown(f"""
+    st.markdown("""
         <style>
-        h1, h2, h3 {{ color: #5D4037 !important; font-family: 'Segoe UI'; }}
-        .logo-esquina {{ position: absolute; top: -50px; right: 0px; width: 70px; }}
-        div.stButton > button {{ background-color: #8D6E63; color: white; border-radius: 8px; border: none; font-weight: bold; }}
-        div.stButton > button:hover {{ background-color: #5D4037; color: white; border: 1px solid white; }}
-        .stTabs [data-baseweb="tab-list"] {{ gap: 8px; }}
-        .stTabs [data-baseweb="tab"] {{
-            background-color: #f4ece1; border-radius: 5px 5px 0px 0px; color: #5D4037; padding: 8px 16px;
-        }}
-        .stTabs [aria-selected="true"] {{ background-color: #8D6E63 !important; color: white !important; }}
+        h1, h2, h3 { color: #5D4037 !important; font-family: 'Segoe UI'; }
+        div.stButton > button { background-color: #8D6E63; color: white; border-radius: 8px; border: none; font-weight: bold; }
+        div.stButton > button:hover { background-color: #5D4037; color: white; border: 1px solid white; }
+        .stTabs [aria-selected="true"] { background-color: #8D6E63 !important; color: white !important; }
         </style>
-        <img src="{logo_html}" class="logo-esquina">
     """, unsafe_allow_html=True)
 
-# --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
+    # Conexión maestra
     conn = st.connection("my_database", type=GSheetsConnection)
 
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
@@ -77,19 +59,16 @@ if login():
     titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "📊 INFORMES"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
     tabs = st.tabs(titulos)
 
+    # --- INICIO ---
     with tabs[0]:
         st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
-        c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
-        with c_i2:
-            try: st.image("logo.png", use_container_width=True)
-            except: st.info("Iglesia Luz y Vida")
-            st.markdown("<h1 style='text-align: center;'>Iglesia Cristiana Luz y Vida</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center;'>Iglesia Cristiana Luz y Vida</h1>", unsafe_allow_html=True)
         if st.sidebar.button("Cerrar Sesión"):
             st.session_state.autenticado = False
             st.rerun()
 
     if rol in ["admin", "tesoreria"]:
-        # --- PESTAÑA INGRESOS ---
+        # --- INGRESOS ---
         with tabs[1]:
             st.header("📥 Registro de Ingresos")
             with st.container(border=True):
@@ -116,6 +95,8 @@ if login():
                 if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     try:
                         columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", "Total_Bs", "Diezmo_10"]
+                        
+                        # Crear registro
                         nuevo_df = pd.DataFrame([{
                             "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
                             "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v), 
@@ -124,102 +105,64 @@ if login():
                             "Diezmo_10": float(total_bs*0.10)
                         }])
                         
+                        # Intentar leer datos actuales
                         try:
                             df_existente = conn.read(worksheet="INGRESOS", ttl=0)
                             if df_existente is not None and not df_existente.empty:
+                                # Asegurar que solo leemos columnas válidas
                                 df_existente = df_existente[[c for c in columnas_orden if c in df_existente.columns]]
                                 df_final = pd.concat([df_existente, nuevo_df], ignore_index=True)
-                            else: df_final = nuevo_df
-                        except: df_final = nuevo_df
+                            else:
+                                df_final = nuevo_df
+                        except:
+                            df_final = nuevo_df
 
-                        for col in columnas_orden:
-                            if col not in df_final.columns: df_final[col] = ""
-                        
-                        conn.update(worksheet="INGRESOS", data=df_final[columnas_orden])
+                        # Guardar en Google Sheets
+                        conn.update(worksheet="INGRESOS", data=df_final)
                         st.cache_data.clear()
                         st.balloons()
-                        st.success("✅ ¡Registro Guardado!")
+                        st.success("✅ ¡Guardado!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error técnico en Ingresos: {str(e)}")
+                        st.error("Error detectado en la conexión:")
+                        st.exception(e) # Esto nos dará el error real
 
-            st.divider()
-            st.subheader("📋 Vista Previa (Últimos 10)")
-            try:
-                df_v = conn.read(worksheet="INGRESOS", ttl=0)
-                if not df_v.empty: st.dataframe(df_v.tail(10), use_container_width=True)
-            except: st.info("Sincronizando...")
-
-        # --- PESTAÑA EGRESOS ---
+        # --- EGRESOS ---
         with tabs[2]:
             st.header("📤 Pagos a Personal")
             with st.container(border=True):
                 e1, e2 = st.columns(2)
                 with e1:
-                    nom = st.text_input("Nombre del Beneficiario")
+                    nom = st.text_input("Nombre")
                     cargo = st.text_input("Cargo")
                     m_usd = st.number_input("Monto USD", min_value=0.0)
                 with e2:
-                    t_eg = st.number_input("Tasa BCV Pago", min_value=1.0, value=36.0)
+                    t_eg = st.number_input("Tasa BCV", min_value=1.0, value=36.0)
                     obs = st.text_area("Observaciones")
-                    st.metric("Total en Bolívares", f"{(m_usd * t_eg):,.2f}")
                 
                 if st.button("💸 REGISTRAR PAGO", use_container_width=True):
                     try:
-                        columnas_egresos = ["Fecha", "Nombre", "Cargo", "Sueldo_USD", "Tasa", "Total_Bs", "Observaciones"]
-                        nuevo_egreso = pd.DataFrame([{
-                            "Fecha": str(date.today()), "Nombre": nom, "Cargo": cargo, 
-                            "Sueldo_USD": float(m_usd), "Tasa": float(t_eg), 
-                            "Total_Bs": float(m_usd * t_eg), "Observaciones": obs
-                        }])
+                        columnas_e = ["Fecha", "Nombre", "Cargo", "Sueldo_USD", "Tasa", "Total_Bs", "Observaciones"]
+                        n_e = pd.DataFrame([{"Fecha": str(date.today()), "Nombre": nom, "Cargo": cargo, "Sueldo_USD": m_usd, "Tasa": t_eg, "Total_Bs": m_usd*t_eg, "Observaciones": obs}])
                         
-                        try:
-                            df_e = conn.read(worksheet="EGRESOS", ttl=0)
-                            if df_e is not None and not df_e.empty:
-                                df_e = df_e[[c for c in columnas_egresos if c in df_e.columns]]
-                                df_final_e = pd.concat([df_e, nuevo_egreso], ignore_index=True)
-                            else: df_final_e = nuevo_egreso
-                        except: df_final_e = nuevo_egreso
-
+                        df_e = conn.read(worksheet="EGRESOS", ttl=0)
+                        df_final_e = pd.concat([df_e, n_e], ignore_index=True) if df_e is not None else n_e
+                        
                         conn.update(worksheet="EGRESOS", data=df_final_e)
                         st.cache_data.clear()
-                        st.success("Pago registrado correctamente")
+                        st.success("Pago registrado")
                         st.rerun()
-                    except Exception as e: 
-                        st.error(f"Error real en Egresos: {str(e)}")
-        idx_inf = 3
-    else:
-        idx_inf = 1
+                    except Exception as e:
+                        st.exception(e)
 
-    # --- PESTAÑA INFORMES ---
-    with tabs[idx_inf]:
-        st.header("📊 Reportes Administrativos")
+    # --- INFORMES ---
+    with tabs[-1]:
+        st.header("📊 Reportes")
         try:
             df_rep = conn.read(worksheet="INGRESOS", ttl=0)
             if df_rep is not None and not df_rep.empty:
-                df_rep['Fecha'] = pd.to_datetime(df_rep['Fecha'], errors='coerce').dt.date
-                df_rep['Total_Bs'] = pd.to_numeric(df_rep['Total_Bs'], errors='coerce').fillna(0)
-                df_rep['Diezmo_10'] = pd.to_numeric(df_rep['Diezmo_10'], errors='coerce').fillna(0)
-                
-                with st.expander("🔍 Filtros de Reporte", expanded=True):
-                    f1, f2 = st.columns(2)
-                    inicio = f1.date_input("Desde", date.today().replace(day=1))
-                    fin = f2.date_input("Hasta", date.today())
-                    redes_f = st.multiselect("Redes a incluir", ["TODAS"] + REDES, default="TODAS")
-
-                mask = (df_rep['Fecha'] >= inicio) & (df_rep['Fecha'] <= fin)
-                df_f = df_rep.loc[mask]
-                if "TODAS" not in redes_f: df_f = df_f[df_f['Red'].isin(redes_f)]
-
-                if not df_f.empty:
-                    res = df_f.groupby('Red').agg({'Total_Bs': 'sum', 'Diezmo_10': 'sum'}).reset_index()
-                    t_10 = res['Diezmo_10'].sum()
-                    zabulon = res[res['Red'] == 'Red de Zabulom']['Diezmo_10'].sum()
-                    
-                    c1, c2 = st.columns(2)
-                    c1.metric("APÓSTOL (10%)", f"{t_10:,.2f} Bs")
-                    c2.metric("PRESBITERIO (Excl. Zabulom)", f"{(t_10 - zabulon):,.2f} Bs")
-                    st.table(res.style.format({"Total_Bs": "{:,.2f}", "Diezmo_10": "{:,.2f}"}))
-                else: st.info("No hay registros en el rango seleccionado.")
-            else: st.warning("La base de datos está vacía.")
-        except: st.info("Esperando conexión de datos...")
+                st.dataframe(df_rep.tail(20), use_container_width=True)
+            else:
+                st.info("No hay datos para mostrar.")
+        except Exception as e:
+            st.warning("No se pudo cargar la vista previa.")
