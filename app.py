@@ -115,34 +115,58 @@ if login():
                     st.metric("TOTAL Bs", f"{total_bs:,.2f}")
                     st.metric("10%", f"{(total_bs * 0.10):,.2f}")
 
-                if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
+            if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     try:
-                        # 1. Crear el nuevo registro
-                        nuevo_df = pd.DataFrame([{
-                            "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
-                            "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v), 
-                            "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in), 
-                            "Tasa": float(tasa_v), "Total_Bs": float(total_bs), 
+                        # 1. Definir el orden exacto de las columnas de tu imagen
+                        columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", 
+                                         "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", 
+                                         "Total_Bs", "Diezmo_10"]
+
+                        # 2. Crear el nuevo registro con los nombres exactos
+                        nuevo_registro = {
+                            "Fecha": str(f_rec), 
+                            "Red": red_sel, 
+                            "Clasificacion": tipo_sel, 
+                            "Metodo": met_sel, 
+                            "Banco": banco_v, 
+                            "Referencia": str(ref_v), 
+                            "Fecha_Op": str(f_op_v), 
+                            "Monto_Orig": float(monto_in), 
+                            "Tasa": float(tasa_v), 
+                            "Total_Bs": float(total_bs), 
                             "Diezmo_10": float(total_bs*0.10)
-                        }])
-                        
-                        # 2. Leer y limpiar columnas vacías del Excel actual
+                        }
+                        nuevo_df = pd.DataFrame([nuevo_registro])
+
+                        # 3. Leer y fusionar con los datos existentes
                         try:
                             df_existente = conn.read(worksheet="INGRESOS", ttl=0)
-                            # Elimina columnas que sean 100% vacías
-                            df_existente = df_existente.dropna(axis=1, how='all')
-                            df_final = pd.concat([df_existente, nuevo_df], ignore_index=True)
+                            if df_existente is not None and not df_existente.empty:
+                                # Solo nos quedamos con las columnas que nos interesan
+                                df_existente = df_existente[[c for c in columnas_orden if c in df_existente.columns]]
+                                df_final = pd.concat([df_existente, nuevo_df], ignore_index=True)
+                            else:
+                                df_final = nuevo_df
                         except:
                             df_final = nuevo_df
 
-                        # 3. Actualizar la hoja
+                        # 4. Asegurar que el archivo final mantenga el orden de la captura
+                        # Si falta alguna columna, la crea vacía para no dar error
+                        for col in columnas_orden:
+                            if col not in df_final.columns:
+                                df_final[col] = ""
+                        
+                        df_final = df_final[columnas_orden]
+
+                        # 5. Subir a Google Sheets
                         conn.update(worksheet="INGRESOS", data=df_final)
+                        
                         st.cache_data.clear()
                         st.balloons()
                         st.success("✅ ¡Registro Guardado con Éxito!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error técnico: {str(e)}")
+                        st.error(f"Error técnico detallado: {str(e)}")
 
             st.divider()
             st.subheader("📋 Vista Previa (Últimos 10)")
@@ -209,3 +233,4 @@ if login():
                 else: st.info("No hay registros en el rango seleccionado.")
             else: st.warning("La base de datos está vacía.")
         except: st.info("Esperando conexión de datos...")
+
