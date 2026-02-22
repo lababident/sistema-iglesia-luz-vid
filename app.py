@@ -51,26 +51,32 @@ def aplicar_estetica():
         .logo-esquina {{ position: absolute; top: -50px; right: 0px; width: 70px; }}
         div.stButton > button {{ background-color: #8D6E63; color: white; border-radius: 8px; border: none; font-weight: bold; }}
         div.stButton > button:hover {{ background-color: #5D4037; color: white; border: 1px solid white; }}
+        .stTabs [data-baseweb="tab-list"] {{ gap: 8px; }}
+        .stTabs [data-baseweb="tab"] {{
+            background-color: #f4ece1; border-radius: 5px 5px 0px 0px; color: #5D4037; padding: 8px 16px;
+        }}
         .stTabs [aria-selected="true"] {{ background-color: #8D6E63 !important; color: white !important; }}
+        [data-testid="stMetricValue"] {{ font-size: 24px; color: #5D4037; }}
         </style>
         <img src="{logo_html}" class="logo-esquina">
     """, unsafe_allow_html=True)
 
+# --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
     conn = st.connection("my_database", type=GSheetsConnection)
 
-    # --- LISTAS DE REFERENCIA ---
+    # --- LISTAS MAESTRAS ---
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", "Red de Niños"]
-    METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
     
-    # Lista de empleados (Puedes agregar más aquí)
-    EMPLEADOS = ["Pastor Principal", "Secretaria", "Mantenimiento", "Músico 1", "Músico 2", "Otro"]
+    METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
     rol = st.session_state.usuario_actual
-    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "📊 INFORMES"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
+    
+    # Añadimos la pestaña de Personal si es admin/tesoreria
+    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "📊 INFORMES", "👥 PERSONAL"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
     tabs = st.tabs(titulos)
 
     # --- PESTAÑA INICIO ---
@@ -79,7 +85,7 @@ if login():
         c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
         with c_i2:
             try: st.image("logo.png", use_container_width=True)
-            except: st.info("Iglesia Luz y Vida")
+            except: st.info("Iglesia Cristiana Luz y Vida")
             st.markdown("<h1 style='text-align: center;'>Iglesia Cristiana Luz y Vida</h1>", unsafe_allow_html=True)
         if st.sidebar.button("Cerrar Sesión"):
             st.session_state.autenticado = False
@@ -88,135 +94,193 @@ if login():
     if rol in ["admin", "tesoreria"]:
         # --- PESTAÑA INGRESOS ---
         with tabs[1]:
-            st.header("📥 Registro de Ingresos")
+            st.subheader("📥 Cargar Nuevo Registro")
             with st.container(border=True):
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    f_rec = st.date_input("Fecha Recaudación", date.today(), key="f_ingreso")
-                    red_sel = st.selectbox("Red", REDES, key="red_ingreso")
-                    tipo_sel = st.radio("Clasificación", ["Ofrenda", "Diezmo"], key="tipo_ingreso")
+                    f_rec = st.date_input("Fecha Recaudación", date.today(), key="ing_fecha")
+                    red_sel = st.selectbox("Red / Origen", REDES, key="ing_red")
+                    tipo_sel = st.radio("Clasificación", ["Ofrenda", "Diezmo"], key="ing_tipo", horizontal=True)
                 with col2:
-                    met_sel = st.selectbox("Forma de Pago", METODOS, key="met_ingreso")
-                    monto_in = st.number_input("Monto Ingresado", min_value=0.0, key="monto_ingreso")
+                    met_sel = st.selectbox("Método de Pago", METODOS, key="ing_metodo")
+                    monto_in = st.number_input("Monto Recibido", min_value=0.0, step=0.01, key="ing_monto")
                     tasa_v = 1.0; ref_v = "N/A"; banco_v = "N/A"; f_op_v = str(f_rec)
                     if met_sel == "USD en Efectivo":
-                        tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="tasa_ingreso")
+                        tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="ing_tasa")
                     elif met_sel in ["Transferencia / PM", "Punto"]:
-                        banco_v = st.text_input("Banco", key="banco_ingreso") if met_sel == "Transferencia / PM" else "Punto"
-                        ref_v = st.text_input("Referencia (4 d)", max_chars=4, key="ref_ingreso")
-                        f_op_v = str(st.date_input("Fecha Operación", date.today(), key="f_op_ingreso"))
+                        banco_v = st.text_input("Banco Emisor", key="ing_banco") if met_sel == "Transferencia / PM" else "Punto"
+                        ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key="ing_ref")
+                        f_op_v = str(st.date_input("Fecha Operación", date.today(), key="ing_f_op"))
                 with col3:
                     total_bs = monto_in * tasa_v if met_sel == "USD en Efectivo" else monto_in
-                    st.metric("TOTAL Bs", f"{total_bs:,.2f}")
-                    st.metric("10%", f"{(total_bs * 0.10):,.2f}")
+                    st.metric("Total en Bolívares", f"{total_bs:,.2f} Bs")
+                    st.metric("10% Correspondiente", f"{(total_bs * 0.10):,.2f} Bs")
+                    if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
+                        try:
+                            columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", "Total_Bs", "Diezmo_10"]
+                            nuevo = pd.DataFrame([{
+                                "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
+                                "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
+                                "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
+                                "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
+                                "Diezmo_10": float(total_bs * 0.10)
+                            }])
+                            try:
+                                df_actual = conn.read(worksheet="INGRESOS", ttl=0)
+                                df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
+                            except: df_update = nuevo
+                            
+                            # Asegurar columnas
+                            for col in columnas_orden:
+                                if col not in df_update.columns: df_update[col] = ""
+                            
+                            conn.update(worksheet="INGRESOS", data=df_update[columnas_orden])
+                            st.cache_data.clear()
+                            st.success("¡Registro guardado exitosamente!")
+                            st.rerun()
+                        except Exception as e: st.error(f"Error al guardar: {e}")
 
-                if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
-                    try:
-                        nuevo_df = pd.DataFrame([{"Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v), "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in), "Tasa": float(tasa_v), "Total_Bs": float(total_bs), "Diezmo_10": float(total_bs*0.10)}])
-                        df_ex = conn.read(worksheet="INGRESOS", ttl=0)
-                        df_final = pd.concat([df_ex, nuevo_df], ignore_index=True) if df_ex is not None else nuevo_df
-                        conn.update(worksheet="INGRESOS", data=df_final)
-                        st.cache_data.clear()
-                        st.success("✅ ¡Guardado!")
-                        st.rerun()
-                    except Exception as e: st.exception(e)
-
-            st.divider()
-            st.subheader("📋 Gestión de Registros (Edición/Borrado)")
+            st.markdown("---")
+            st.subheader("📋 Gestión de Registros (Editar / Borrar)")
+            st.info("💡 Haz doble clic en una celda para editarla. Para borrar, selecciona la fila a la izquierda y presiona 'Supr' en tu teclado.")
             try:
-                df_ing = conn.read(worksheet="INGRESOS", ttl=0)
-                if df_ing is not None and not df_ing.empty:
-                    # Editor de datos para corregir o borrar
-                    edited_df = st.data_editor(df_ing, num_rows="dynamic", use_container_width=True, key="editor_ingresos")
-                    if st.button("💾 APLICAR CAMBIOS EN TABLA"):
-                        conn.update(worksheet="INGRESOS", data=edited_df)
+                df_gestion = conn.read(worksheet="INGRESOS", ttl=0)
+                if df_gestion is not None and not df_gestion.empty:
+                    # Editor interactivo
+                    df_editado = st.data_editor(df_gestion, num_rows="dynamic", use_container_width=True, key="gestor_ingresos")
+                    if st.button("🔄 APLICAR CAMBIOS EN LA BASE DE DATOS", type="primary"):
+                        conn.update(worksheet="INGRESOS", data=df_editado)
                         st.cache_data.clear()
-                        st.success("Cambios aplicados correctamente")
+                        st.success("¡Base de datos actualizada!")
                         st.rerun()
-                else: st.info("No hay registros aún.")
-            except: st.warning("Error al cargar la gestión.")
+                else: st.write("No hay registros para mostrar.")
+            except: st.warning("Conectando con la base de datos...")
 
         # --- PESTAÑA EGRESOS ---
         with tabs[2]:
-            st.header("📤 Pagos a Personal")
+            st.header("📤 Registro de Egresos / Pagos")
+            
+            # Intentar cargar empleados desde la pestaña PERSONAL
+            try:
+                df_emp = conn.read(worksheet="EMPLEADOS", ttl=0)
+                if df_emp is not None and not df_emp.empty:
+                    # Combina Nombre, Apellido y Cargo para el listado
+                    lista_empleados = (df_emp['Nombre'].astype(str) + " " + df_emp['Apellido'].astype(str) + " - " + df_emp['Cargo'].astype(str)).tolist()
+                else: lista_empleados = ["Sin empleados registrados (Ve a la pestaña Personal)"]
+            except: lista_empleados = ["Debe crear la pestaña EMPLEADOS en su Excel"]
+
             with st.container(border=True):
-                e1, e2 = st.columns(2)
-                with e1:
-                    nom = st.selectbox("Nombre del Beneficiario", EMPLEADOS, key="nom_egreso")
-                    cargo = st.text_input("Cargo", key="cargo_egreso")
-                    m_usd = st.number_input("Monto USD", min_value=0.0, key="monto_egreso")
-                with e2:
-                    t_eg = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="tasa_egreso")
-                    obs = st.text_area("Observaciones", key="obs_egreso")
-                    st.metric("Total en Bs", f"{(m_usd * t_eg):,.2f}")
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    nom_e = st.selectbox("Beneficiario / Empleado", lista_empleados, key="eg_nom")
+                    monto_usd_e = st.number_input("Monto en USD", min_value=0.0, step=0.01, key="eg_monto")
+                with col_e2:
+                    tasa_e = st.number_input("Tasa BCV del día", min_value=1.0, value=36.0, key="eg_tasa")
+                    nota_e = st.text_area("Observaciones", placeholder="Ej: Pago de quincena...", key="eg_obs")
+                    st.metric("Total a Pagar (Bs)", f"{(monto_usd_e * tasa_e):,.2f} Bs")
                 
                 if st.button("💸 REGISTRAR PAGO", use_container_width=True):
                     try:
-                        n_e = pd.DataFrame([{"Fecha": str(date.today()), "Nombre": nom, "Cargo": cargo, "Sueldo_USD": m_usd, "Tasa": t_eg, "Total_Bs": m_usd*t_eg, "Observaciones": obs}])
-                        df_ex_e = conn.read(worksheet="EGRESOS", ttl=0)
-                        df_f_e = pd.concat([df_ex_e, n_e], ignore_index=True) if df_ex_e is not None else n_e
-                        conn.update(worksheet="EGRESOS", data=df_f_e)
+                        nuevo_egreso = pd.DataFrame([{
+                            "Fecha": str(date.today()), "Empleado_Beneficiario": nom_e,
+                            "Sueldo_USD": float(monto_usd_e), "Tasa": float(tasa_e),
+                            "Total_Bs": float(monto_usd_e * tasa_e), "Observaciones": nota_e
+                        }])
+                        try:
+                            df_eg_actual = conn.read(worksheet="EGRESOS", ttl=0)
+                            df_eg_final = pd.concat([df_eg_actual, nuevo_egreso], ignore_index=True) if df_eg_actual is not None else nuevo_egreso
+                        except: df_eg_final = nuevo_egreso
+                        
+                        conn.update(worksheet="EGRESOS", data=df_eg_final)
                         st.cache_data.clear()
-                        st.success("Pago registrado")
+                        st.success("Pago registrado correctamente")
                         st.rerun()
-                    except Exception as e: st.exception(e)
+                    except Exception as e: st.error(f"Error: {e}")
             
-            st.divider()
+            st.markdown("---")
             st.subheader("📋 Vista Previa de Egresos")
             try:
-                df_egr = conn.read(worksheet="EGRESOS", ttl=0)
-                if df_egr is not None and not df_egr.empty:
-                    st.dataframe(df_egr, use_container_width=True)
-                    st.metric("TOTAL GASTADO (Bs)", f"{df_egr['Total_Bs'].sum():,.2f}")
-                else: st.info("No hay egresos registrados.")
-            except: st.warning("Error al cargar egresos.")
+                df_egr_view = conn.read(worksheet="EGRESOS", ttl=0)
+                if df_egr_view is not None and not df_egr_view.empty:
+                    st.dataframe(df_egr_view.tail(15), use_container_width=True)
+                else: st.write("Aún no hay egresos registrados.")
+            except: st.info("Sincronizando...")
 
         idx_inf = 3
+        idx_pers = 4
     else:
         idx_inf = 1
 
     # --- PESTAÑA INFORMES ---
     with tabs[idx_inf]:
-        st.header("📊 Reportes Administrativos")
+        st.header("📊 Reportes y Auditoría")
         try:
-            df_rep = conn.read(worksheet="INGRESOS", ttl=0)
-            if df_rep is not None and not df_rep.empty:
-                # Convertir fechas para filtrar
-                df_rep['Fecha'] = pd.to_datetime(df_rep['Fecha']).dt.date
+            df_inf = conn.read(worksheet="INGRESOS", ttl=0)
+            if df_inf is not None and not df_inf.empty:
+                df_inf['Fecha'] = pd.to_datetime(df_inf['Fecha']).dt.date
                 
-                # --- FILTROS ---
-                with st.expander("🔍 Filtros de Búsqueda", expanded=True):
-                    f1, f2 = st.columns(2)
-                    inicio = f1.date_input("Fecha Inicio", date.today().replace(day=1))
-                    fin = f2.date_input("Fecha Fin", date.today())
-                    redes_f = st.multiselect("Filtrar por Red", ["TODAS"] + REDES, default="TODAS")
+                with st.expander("🔍 Filtros de Reporte", expanded=True):
+                    c_f1, c_f2, c_f3 = st.columns(3)
+                    f_ini = c_f1.date_input("Desde", date.today().replace(day=1))
+                    f_fin = c_f2.date_input("Hasta", date.today())
+                    red_filtro = c_f3.multiselect("Filtrar Redes", ["TODAS"] + REDES, default="TODAS")
 
-                # Aplicar filtros
-                mask = (df_rep['Fecha'] >= inicio) & (df_rep['Fecha'] <= fin)
-                df_filtrado = df_rep.loc[mask]
-                if "TODAS" not in redes_f:
-                    df_filtrado = df_filtrado[df_filtrado['Red'].isin(redes_f)]
+                # Aplicar Filtros
+                mask = (df_inf['Fecha'] >= f_ini) & (df_inf['Fecha'] <= f_fin)
+                df_fil = df_inf.loc[mask]
+                if "TODAS" not in red_filtro:
+                    df_fil = df_fil[df_fil['Red'].isin(red_filtro)]
 
-                if not df_filtrado.empty:
-                    # --- CÁLCULOS SOLICITADOS ---
-                    # 1. Diezmo Apóstol (10% de TODO lo recaudado en el filtro)
-                    diezmo_apostol = df_filtrado['Diezmo_10'].sum()
+                if not df_fil.empty:
+                    # Cálculos Apóstol / Presbiterio
+                    total_general = df_fil['Total_Bs'].sum()
+                    apostol = df_fil['Diezmo_10'].sum()
+                    df_presb = df_fil[df_fil['Red'] != "Red de Zabulom"]
+                    presbiterio = df_presb['Diezmo_10'].sum()
+
+                    # Mostrar Cuadros de Resumen
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Ingreso Total (Filtro)", f"{total_general:,.2f} Bs")
+                    m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
+                    m3.metric("PRESBITERIO (Sin Zabulón)", f"{presbiterio:,.2f} Bs")
+
+                    st.markdown("---")
+                    st.subheader("📈 Resumen Detallado por las 16 Redes")
                     
-                    # 2. Diezmo Presbiterio (10% de todo EXCEPTO Zabulon)
-                    df_presbiterio = df_filtrado[df_filtrado['Red'] != "Red de Zabulom"]
-                    diezmo_presbiterio = df_presbiterio['Diezmo_10'].sum()
+                    # Agrupar datos por Red y sumar
+                    resumen_redes = df_fil.groupby('Red').agg({'Total_Bs': 'sum', 'Diezmo_10': 'sum'}).reset_index()
+                    
+                    # Forzar a que aparezcan las 16 redes aunque tengan 0 Bs
+                    df_todas_redes = pd.DataFrame({'Red': REDES})
+                    resumen_final = pd.merge(df_todas_redes, resumen_redes, on='Red', how='left').fillna(0)
+                    
+                    # Mostrar la tabla formateada
+                    st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
 
-                    # Mostrar Métricas
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("TOTAL FILTRADO (Bs)", f"{df_filtrado['Total_Bs'].sum():,.2f}")
-                    c2.metric("APÓSTOL (10% Total)", f"{diezmo_apostol:,.2f} Bs")
-                    c3.metric("PRESBITERIO (Excl. Zabulón)", f"{diezmo_presbiterio:,.2f} Bs")
-
-                    st.markdown("### Detalles de Movimientos Filtrados")
-                    st.dataframe(df_filtrado, use_container_width=True)
                 else:
-                    st.warning("No hay datos para los filtros seleccionados.")
+                    st.warning("No hay datos para estos filtros.")
             else:
-                st.info("La base de datos está vacía.")
+                st.info("Base de datos sin registros.")
         except Exception as e:
-            st.error(f"Error al generar informe: {e}")
+            st.error(f"Error al procesar informes: {e}")
+
+    # --- PESTAÑA PERSONAL (Solo Admin/Tesoreria) ---
+    if rol in ["admin", "tesoreria"]:
+        with tabs[idx_pers]:
+            st.header("👥 Gestión de Empleados y Beneficiarios")
+            st.write("Agrega a las personas que recibirán pagos. Estos nombres aparecerán en la lista desplegable de la pestaña EGRESOS.")
+            try:
+                df_empleados = conn.read(worksheet="EMPLEADOS", ttl=0)
+                if df_empleados is None or df_empleados.empty:
+                    df_empleados = pd.DataFrame(columns=["Nombre", "Apellido", "Cargo"])
+            except:
+                df_empleados = pd.DataFrame(columns=["Nombre", "Apellido", "Cargo"])
+            
+            # Editor para la base de datos de Empleados
+            df_emp_editado = st.data_editor(df_empleados, num_rows="dynamic", use_container_width=True, key="gestor_empleados")
+            
+            if st.button("💾 GUARDAR LISTA DE PERSONAL", type="primary"):
+                conn.update(worksheet="EMPLEADOS", data=df_emp_editado)
+                st.cache_data.clear()
+                st.success("¡Directorio de personal actualizado!")
+                st.rerun()
