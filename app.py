@@ -127,27 +127,27 @@ if login():
                     st.metric("10%", f"{(total_bs * 0.10):,.2f}")
 
                 if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
-                    df_act = conn.read(worksheet="INGRESOS")
-                    nuevo = pd.DataFrame([{"Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, "Metodo": met_sel, "Banco": banco_v, "Referencia": ref_v, "Fecha_Op": f_op_v, "Monto_Orig": monto_in, "Tasa": tasa_v, "Total_Bs": total_bs, "Diezmo_10": total_bs*0.10}])
-                    conn.update(worksheet="INGRESOS", data=pd.concat([df_act, nuevo], ignore_index=True))
-                    st.cache_data.clear()
-                    st.success("Guardado exitoso")
-                    st.rerun()
-                    st.divider()
-            st.subheader("📋 Vista Previa y Corrección")
-            try:
-                # El 'try' intenta leer, si falla, pasa al 'except' sin romper la app
-                df_v = conn.read(worksheet="INGRESOS", ttl=0)
-                if df_v is not None and not df_v.empty:
-                    ed_ing = st.data_editor(df_v.tail(15), use_container_width=True, key="editor_admin_protegido")
-                    if st.button("🔄 Sincronizar Ediciones"):
-                        conn.update(worksheet="INGRESOS", data=ed_ing)
+                    try:
+                        # Leer con protección
+                        df_act = conn.read(worksheet="INGRESOS", ttl=0)
+                        
+                        nuevo = pd.DataFrame([{
+                            "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, 
+                            "Metodo": met_sel, "Banco": banco_v, "Referencia": ref_v, 
+                            "Fecha_Op": f_op_v, "Monto_Orig": monto_in, "Tasa": tasa_v, 
+                            "Total_Bs": total_bs, "Diezmo_10": total_bs*0.10
+                        }])
+                        
+                        # Concatenar y actualizar
+                        df_upd = pd.concat([df_act, nuevo], ignore_index=True)
+                        conn.update(worksheet="INGRESOS", data=df_upd)
+                        
                         st.cache_data.clear()
-                        st.success("¡Base de datos actualizada con éxito!")
+                        st.success("✅ ¡Registro guardado exitosamente en la nube!")
                         st.rerun()
-            except Exception as e:
-                # Si Google da el error HTTP, verás este mensaje en azul en lugar de la pantalla roja
-                st.info("🔄 Sincronizando con Google Sheets... Por favor, espera un momento o refresca la página.")
+                    except Exception as e:
+                        st.error("❌ Error de conexión con Google Sheets. Reintenta en unos segundos.")
+                        st.info("Verifica que el archivo no esté siendo editado manualmente en este momento.")
 
         # PESTAÑA EGRESOS
         with tabs[2]:
@@ -229,3 +229,4 @@ if login():
                     st.download_button("📥 Descargar PDF", data=pdf_out, file_name="Reporte.pdf")
             else: st.warning("Sin datos.")
         except Exception as e: st.error(f"Error: {e}")
+
