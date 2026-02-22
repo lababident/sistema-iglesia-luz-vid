@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import date
 import base64
+from fpdf import FPDF
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Gestión Iglesia Luz y Vida", layout="wide", page_icon="⛪")
@@ -34,7 +35,7 @@ def login():
         return False
     return True
 
-# --- FUNCIONES ESTÉTICAS ---
+# --- FUNCIONES ESTÉTICAS Y PDF ---
 def get_base64_of_bin_file(bin_file):
     try:
         with open(bin_file, 'rb') as f:
@@ -61,12 +62,63 @@ def aplicar_estetica():
         <img src="{logo_html}" class="logo-esquina">
     """, unsafe_allow_html=True)
 
+def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Título
+    pdf.set_font("Arial", 'B', 15)
+    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(190, 8, txt="Reporte de Egresos y Pagos", ln=True, align='C')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
+    pdf.ln(5)
+
+    # Encabezados de la tabla
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(22, 8, "Fecha", 1, 0, 'C')
+    pdf.cell(60, 8, "Beneficiario", 1, 0, 'C')
+    pdf.cell(20, 8, "USD", 1, 0, 'C')
+    pdf.cell(20, 8, "Tasa", 1, 0, 'C')
+    pdf.cell(30, 8, "Total Bs", 1, 0, 'C')
+    pdf.cell(38, 8, "Nota", 1, 1, 'C')
+
+    # Filas de la tabla
+    pdf.set_font("Arial", '', 8)
+    for i, row in df.iterrows():
+        fecha_str = str(row.get('Fecha', ''))
+        # Limitar caracteres para que no se deforme la tabla en el PDF
+        ben_str = str(row.get('Empleado_Beneficiario', ''))[:30] 
+        obs_str = str(row.get('Observaciones', ''))[:20]
+        
+        # Evitar errores con tildes en el PDF
+        ben_str = ben_str.encode('latin-1', 'replace').decode('latin-1')
+        obs_str = obs_str.encode('latin-1', 'replace').decode('latin-1')
+
+        usd_str = f"{float(row.get('Sueldo_USD', 0)):.2f}"
+        tasa_str = f"{float(row.get('Tasa', 0)):.2f}"
+        bs_str = f"{float(row.get('Total_Bs', 0)):.2f}"
+
+        pdf.cell(22, 8, fecha_str, 1, 0, 'C')
+        pdf.cell(60, 8, ben_str, 1, 0, 'L')
+        pdf.cell(20, 8, usd_str, 1, 0, 'R')
+        pdf.cell(20, 8, tasa_str, 1, 0, 'R')
+        pdf.cell(30, 8, bs_str, 1, 0, 'R')
+        pdf.cell(38, 8, obs_str, 1, 1, 'L')
+
+    pdf.ln(5)
+    # Total Final
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(190, 8, txt=f"TOTAL PAGADO: {total_bs:,.2f} Bs", ln=True, align='R')
+
+    return pdf.output(dest="S").encode("latin-1")
+
 # --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
     conn = st.connection("my_database", type=GSheetsConnection)
 
-    # --- LISTAS MAESTRAS ---
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", "Red de Niños"]
@@ -140,7 +192,6 @@ if login():
 
             st.markdown("---")
             st.subheader("📋 Gestión de Registros (Editar / Borrar)")
-            st.info("💡 Haz doble clic en una celda para editarla. Para borrar, selecciona la fila a la izquierda y presiona 'Supr'.")
             try:
                 df_gestion = conn.read(worksheet="INGRESOS", ttl="10m")
                 if df_gestion is not None and not df_gestion.empty:
@@ -193,11 +244,16 @@ if login():
                     except Exception as e: st.error(f"Error: {e}")
             
             st.markdown("---")
-            st.subheader("📋 Vista Previa de Egresos")
+            st.subheader("📋 Gestión de Egresos (Editar / Borrar)")
             try:
                 df_egr_view = conn.read(worksheet="EGRESOS", ttl="10m")
                 if df_egr_view is not None and not df_egr_view.empty:
-                    st.dataframe(df_egr_view.tail(15), use_container_width=True)
+                    df_egr_edit = st.data_editor(df_egr_view, num_rows="dynamic", use_container_width=True, key="gestor_egresos")
+                    if st.button("🔄 APLICAR CAMBIOS EN EGRESOS", type="primary"):
+                        conn.update(worksheet="EGRESOS", data=df_egr_edit)
+                        st.cache_data.clear()
+                        st.success("¡Egresos actualizados!")
+                        st.rerun()
                 else: st.write("Aún no hay egresos registrados.")
             except: st.info("Sincronizando...")
 
@@ -209,48 +265,86 @@ if login():
     # --- PESTAÑA INFORMES ---
     with tabs[idx_inf]:
         st.header("📊 Reportes y Auditoría")
-        try:
-            df_inf = conn.read(worksheet="INGRESOS", ttl="10m")
-            if df_inf is not None and not df_inf.empty:
-                df_inf['Fecha'] = pd.to_datetime(df_inf['Fecha']).dt.date
-                
-                with st.expander("🔍 Filtros de Reporte", expanded=True):
-                    c_f1, c_f2, c_f3 = st.columns(3)
-                    f_ini = c_f1.date_input("Desde", date.today().replace(day=1))
-                    f_fin = c_f2.date_input("Hasta", date.today())
-                    red_filtro = c_f3.multiselect("Filtrar Redes", ["TODAS"] + REDES, default="TODAS")
+        
+        # Selector de tipo de reporte
+        tipo_reporte = st.radio("Seleccione el módulo a consultar:", ["📥 Reporte de INGRESOS", "📤 Reporte de EGRESOS (PDF)"], horizontal=True)
+        st.markdown("---")
 
-                mask = (df_inf['Fecha'] >= f_ini) & (df_inf['Fecha'] <= f_fin)
-                df_fil = df_inf.loc[mask]
-                if "TODAS" not in red_filtro:
-                    df_fil = df_fil[df_fil['Red'].isin(red_filtro)]
-
-                if not df_fil.empty:
-                    total_general = df_fil['Total_Bs'].sum()
-                    apostol = df_fil['Diezmo_10'].sum()
-                    df_presb = df_fil[df_fil['Red'] != "Red de Zabulom"]
-                    presbiterio = df_presb['Diezmo_10'].sum()
-
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Ingreso Total (Filtro)", f"{total_general:,.2f} Bs")
-                    m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
-                    m3.metric("PRESBITERIO (Sin Zabulón)", f"{presbiterio:,.2f} Bs")
-
-                    st.markdown("---")
-                    st.subheader("📈 Resumen Detallado por las 16 Redes")
+        if tipo_reporte == "📥 Reporte de INGRESOS":
+            try:
+                df_inf = conn.read(worksheet="INGRESOS", ttl="10m")
+                if df_inf is not None and not df_inf.empty:
+                    df_inf['Fecha'] = pd.to_datetime(df_inf['Fecha']).dt.date
                     
-                    resumen_redes = df_fil.groupby('Red').agg({'Total_Bs': 'sum', 'Diezmo_10': 'sum'}).reset_index()
-                    df_todas_redes = pd.DataFrame({'Red': REDES})
-                    resumen_final = pd.merge(df_todas_redes, resumen_redes, on='Red', how='left').fillna(0)
-                    
-                    st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
+                    with st.expander("🔍 Filtros de Reporte de Ingresos", expanded=True):
+                        c_f1, c_f2, c_f3 = st.columns(3)
+                        f_ini = c_f1.date_input("Desde", date.today().replace(day=1))
+                        f_fin = c_f2.date_input("Hasta", date.today())
+                        red_filtro = c_f3.multiselect("Filtrar Redes", ["TODAS"] + REDES, default="TODAS")
 
+                    mask = (df_inf['Fecha'] >= f_ini) & (df_inf['Fecha'] <= f_fin)
+                    df_fil = df_inf.loc[mask]
+                    if "TODAS" not in red_filtro:
+                        df_fil = df_fil[df_fil['Red'].isin(red_filtro)]
+
+                    if not df_fil.empty:
+                        total_general = df_fil['Total_Bs'].sum()
+                        apostol = df_fil['Diezmo_10'].sum()
+                        df_presb = df_fil[df_fil['Red'] != "Red de Zabulom"]
+                        presbiterio = df_presb['Diezmo_10'].sum()
+
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Ingreso Total (Filtro)", f"{total_general:,.2f} Bs")
+                        m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
+                        m3.metric("PRESBITERIO (Sin Zabulón)", f"{presbiterio:,.2f} Bs")
+
+                        st.markdown("---")
+                        st.subheader("📈 Resumen Detallado por las 16 Redes")
+                        resumen_redes = df_fil.groupby('Red').agg({'Total_Bs': 'sum', 'Diezmo_10': 'sum'}).reset_index()
+                        df_todas_redes = pd.DataFrame({'Red': REDES})
+                        resumen_final = pd.merge(df_todas_redes, resumen_redes, on='Red', how='left').fillna(0)
+                        
+                        st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
+                    else:
+                        st.warning("No hay datos para estos filtros.")
                 else:
-                    st.warning("No hay datos para estos filtros.")
-            else:
-                st.info("Base de datos sin registros.")
-        except Exception as e:
-            st.error(f"Error al procesar informes: {e}")
+                    st.info("Base de datos sin registros.")
+            except Exception as e: st.error(f"Error al procesar ingresos: {e}")
+
+        else:
+            # LÓGICA DE REPORTE DE EGRESOS CON PDF
+            try:
+                df_egr_inf = conn.read(worksheet="EGRESOS", ttl="10m")
+                if df_egr_inf is not None and not df_egr_inf.empty:
+                    df_egr_inf['Fecha'] = pd.to_datetime(df_egr_inf['Fecha']).dt.date
+                    
+                    with st.expander("🔍 Filtros de Reporte de Egresos", expanded=True):
+                        col_ef1, col_ef2 = st.columns(2)
+                        fe_ini = col_ef1.date_input("Desde", date.today().replace(day=1), key="fe_ini")
+                        fe_fin = col_ef2.date_input("Hasta", date.today(), key="fe_fin")
+
+                    mask_e = (df_egr_inf['Fecha'] >= fe_ini) & (df_egr_inf['Fecha'] <= fe_fin)
+                    df_fil_egr = df_egr_inf.loc[mask_e]
+
+                    if not df_fil_egr.empty:
+                        total_egresos = df_fil_egr['Total_Bs'].sum()
+                        st.metric("TOTAL PAGADO EN EL PERÍODO (Bs)", f"{total_egresos:,.2f} Bs")
+                        st.dataframe(df_fil_egr, use_container_width=True)
+
+                        # BOTÓN DE DESCARGA PDF
+                        pdf_data = generar_pdf_egresos(df_fil_egr, fe_ini, fe_fin, total_egresos)
+                        st.download_button(
+                            label="📄 DESCARGAR REPORTE EN PDF",
+                            data=pdf_data,
+                            file_name=f"Reporte_Egresos_{fe_ini}_al_{fe_fin}.pdf",
+                            mime="application/pdf",
+                            type="primary"
+                        )
+                    else:
+                        st.warning("No hay egresos registrados en este rango de fechas.")
+                else:
+                    st.info("Base de datos de Egresos vacía.")
+            except Exception as e: st.error(f"Error al procesar egresos: {e}")
 
     # --- PESTAÑA PERSONAL ---
     if rol in ["admin", "tesoreria"]:
@@ -267,9 +361,7 @@ if login():
             df_emp_editado = st.data_editor(df_empleados, num_rows="dynamic", use_container_width=True, key="gestor_empleados")
             
             if st.button("💾 GUARDAR LISTA DE PERSONAL", type="primary"):
-                # LIMPIEZA DE CELDAS VACÍAS PARA EVITAR EL ERROR DE API
                 df_limpio = df_emp_editado.fillna("")
-                
                 conn.update(worksheet="EMPLEADOS", data=df_limpio)
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
