@@ -63,7 +63,7 @@ def aplicar_estetica():
         <img src="{logo_html}" class="logo-esquina">
     """, unsafe_allow_html=True)
 
-# --- INICIO DE LA APP ---
+# --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -74,7 +74,7 @@ if login():
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", "Red de Niños"]
     METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
-    # Definición de pestañas por Rol
+    # 1. DEFINICIÓN DINÁMICA DE PESTAÑAS SEGÚN ROL
     rol = st.session_state.usuario_actual
     if rol in ["admin", "tesoreria"]:
         titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "📊 INFORMES"]
@@ -83,24 +83,25 @@ if login():
 
     tabs = st.tabs(titulos)
 
-    # --- PESTAÑA INICIO ---
+    # --- PESTAÑA: INICIO ---
     with tabs[0]:
-        st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
+        st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Sesión: {rol.upper()}</h4>", unsafe_allow_html=True)
         c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
         with c_i2:
             try: st.image("logo.png", use_container_width=True)
             except: st.info("Logo Iglesia Luz y Vida")
             st.markdown("<h1 style='text-align: center;'>Iglesia Cristiana Luz y Vida</h1>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center;'>Administración y Gestión de Ofrendas</p>", unsafe_allow_html=True)
         if st.sidebar.button("Cerrar Sesión"):
             st.session_state.autenticado = False
             st.rerun()
 
-    # --- PESTAÑAS EXCLUSIVAS (ADMIN/TESORERIA) ---
+    # --- LÓGICA PARA ADMIN / TESORERÍA ---
     if rol in ["admin", "tesoreria"]:
-        # INGRESOS
+        # PESTAÑA INGRESOS
         with tabs[1]:
-            st.header("📥 Registro de Ingresos")
-            with st.form("form_ingresos", clear_on_submit=True):
+            st.header("📥 Registro de Ofrendas y Diezmos")
+            with st.container(border=True):
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     f_rec = st.date_input("Fecha Recaudación", date.today())
@@ -114,9 +115,9 @@ if login():
                     if met_sel == "USD en Efectivo":
                         tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0)
                     elif met_sel == "Transferencia / PM":
-                        banco_v = st.text_input("Banco de Origen")
+                        banco_v = st.text_input("Banco")
                         ref_v = st.text_input("Referencia (4 d)", max_chars=4)
-                        f_op_v = str(st.date_input("Fecha Op. Transferencia", date.today()))
+                        f_op_v = str(st.date_input("Fecha Op. Transf.", date.today()))
                     elif met_sel == "Punto":
                         ref_v = st.text_input("Ref Punto (4 d)", max_chars=4)
                         f_op_v = str(st.date_input("Fecha Op. Punto", date.today()))
@@ -125,27 +126,33 @@ if login():
                     st.metric("TOTAL Bs", f"{total_bs:,.2f}")
                     st.metric("10%", f"{(total_bs * 0.10):,.2f}")
 
-                if st.form_submit_button("💾 GUARDAR"):
+                if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                     df_act = conn.read(worksheet="INGRESOS")
                     nuevo = pd.DataFrame([{"Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel, "Metodo": met_sel, "Banco": banco_v, "Referencia": ref_v, "Fecha_Op": f_op_v, "Monto_Orig": monto_in, "Tasa": tasa_v, "Total_Bs": total_bs, "Diezmo_10": total_bs*0.10}])
                     conn.update(worksheet="INGRESOS", data=pd.concat([df_act, nuevo], ignore_index=True))
                     st.cache_data.clear()
-                    st.success("Registro Guardado")
-            
-            st.divider()
+                    st.success("Guardado exitoso")
+                    st.rerun()
+                    st.divider()
             st.subheader("📋 Vista Previa y Corrección")
-            df_v = conn.read(worksheet="INGRESOS")
-            if not df_v.empty:
-                ed_ing = st.data_editor(df_v.tail(15), use_container_width=True)
-                if st.button("🔄 Sincronizar Ediciones"):
-                    conn.update(worksheet="INGRESOS", data=ed_ing)
-                    st.cache_data.clear()
-                    st.success("Base de Datos Actualizada")
+            try:
+                # El 'try' intenta leer, si falla, pasa al 'except' sin romper la app
+                df_v = conn.read(worksheet="INGRESOS", ttl=0)
+                if df_v is not None and not df_v.empty:
+                    ed_ing = st.data_editor(df_v.tail(15), use_container_width=True, key="editor_admin_protegido")
+                    if st.button("🔄 Sincronizar Ediciones"):
+                        conn.update(worksheet="INGRESOS", data=ed_ing)
+                        st.cache_data.clear()
+                        st.success("¡Base de datos actualizada con éxito!")
+                        st.rerun()
+            except Exception as e:
+                # Si Google da el error HTTP, verás este mensaje en azul en lugar de la pantalla roja
+                st.info("🔄 Sincronizando con Google Sheets... Por favor, espera un momento o refresca la página.")
 
-        # EGRESOS
+        # PESTAÑA EGRESOS
         with tabs[2]:
             st.header("📤 Pagos a Personal")
-            with st.form("form_egresos", clear_on_submit=True):
+            with st.container(border=True):
                 e1, e2 = st.columns(2)
                 with e1:
                     nom = st.text_input("NOMBRE")
@@ -155,14 +162,18 @@ if login():
                     t_eg = st.number_input("TASA BCV EGRESO", min_value=1.0, value=36.0)
                     obs = st.text_area("OBSERVACIONES")
                     st.metric("TOTAL A PAGAR (Bs)", f"{(m_usd * t_eg):,.2f}")
-                if st.form_submit_button("💸 REGISTRAR PAGO"):
+                if st.button("💸 REGISTRAR PAGO", use_container_width=True):
                     df_e = conn.read(worksheet="EGRESOS")
                     n_e = pd.DataFrame([{"Fecha": str(date.today()), "Nombre": nom, "Cargo": cargo, "Sueldo_USD": m_usd, "Tasa": t_eg, "Total_Bs": m_usd*t_eg, "Observaciones": obs}])
                     conn.update(worksheet="EGRESOS", data=pd.concat([df_e, n_e], ignore_index=True))
                     st.cache_data.clear()
                     st.success("Pago registrado")
+                    st.rerun()
+        
+        # El índice de informes para admin/tesoreria es el 3
         idx_inf = 3
     else:
+        # El índice de informes para pastoral es el 1
         idx_inf = 1
 
     # --- PESTAÑA INFORMES (COMPARTIDA) ---
@@ -181,6 +192,7 @@ if login():
                     fin = f2.date_input("Hasta", date.today())
                     redes_f = st.multiselect("Filtrar Redes", ["TODAS"] + REDES, default="TODAS")
 
+                # Aplicar Filtro
                 mask = (df_rep['Fecha'] >= inicio) & (df_rep['Fecha'] <= fin)
                 df_f = df_rep.loc[mask]
                 if "TODAS" not in redes_f:
@@ -199,7 +211,6 @@ if login():
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14)
-                    pdf.set_text_color(93, 64, 55)
                     pdf.cell(200, 10, "Iglesia Luz y Vida - Reporte Administrativo", ln=True, align='C')
                     pdf.set_font("Arial", size=10)
                     pdf.cell(200, 10, f"Periodo: {inicio} al {fin}", ln=True, align='C')
@@ -215,6 +226,6 @@ if login():
                         pdf.cell(50, 10, f"{r['Diezmo_10']:,.2f}", 1, 1)
                     
                     pdf_out = pdf.output(dest='S').encode('latin-1')
-                    st.download_button("📥 Descargar Reporte PDF", data=pdf_out, file_name=f"Reporte_{inicio}.pdf")
-            else: st.warning("Sin datos para informes.")
+                    st.download_button("📥 Descargar PDF", data=pdf_out, file_name="Reporte.pdf")
+            else: st.warning("Sin datos.")
         except Exception as e: st.error(f"Error: {e}")
