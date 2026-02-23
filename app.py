@@ -324,20 +324,6 @@ if login():
                 else: st.write("No hay registros para mostrar.")
             except: st.warning("Conectando con la base de datos...")
 
-            st.markdown("---")
-            st.subheader("📋 Gestión de Registros (Editar / Borrar)")
-            try:
-                df_gestion = conn.read(worksheet="INGRESOS", ttl="10m")
-                if df_gestion is not None and not df_gestion.empty:
-                    df_editado = st.data_editor(df_gestion, num_rows="dynamic", use_container_width=True, key="gestor_ingresos")
-                    if st.button("🔄 APLICAR CAMBIOS EN LA BASE DE DATOS", type="primary"):
-                        conn.update(worksheet="INGRESOS", data=df_editado)
-                        st.cache_data.clear()
-                        st.success("¡Base de datos actualizada!")
-                        st.rerun()
-                else: st.write("No hay registros para mostrar.")
-            except: st.warning("Conectando con la base de datos...")
-
         # --- PESTAÑA EGRESOS ---
         with tabs[2]:
             st.header("📤 Registro de Egresos Fijos / Nómina")
@@ -633,7 +619,3 @@ if login():
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
-
-
-
-
