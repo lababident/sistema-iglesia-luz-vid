@@ -110,65 +110,72 @@ def obtener_proximo_recibo(conn):
     return int(max_rec + 1)
 
 def generar_recibo_pdf(nro_recibo, monto, fecha, concepto):
-    pdf = FPDF(orientation='L', unit='mm', format='A5')
+    # AJUSTE: Vertical (P), Tamaño Carta (Letter)
+    pdf = FPDF(orientation='P', unit='mm', format='Letter')
     pdf.add_page()
     
+    # Marco estético para media hoja
+    pdf.rect(5, 5, 205, 135) # Dibuja un cuadro en la mitad superior
+    
     # Logo
-    try: pdf.image('logo.png', 10, 8, 25)
+    try: pdf.image('logo.png', 12, 12, 30)
     except: pass
     
     # Título central
-    pdf.set_font("Arial", 'B', 18)
-    pdf.cell(0, 10, txt="RECIBO DE EGRESO", ln=False, align='C')
+    pdf.set_font("Arial", 'B', 20)
+    pdf.set_xy(0, 15)
+    pdf.cell(216, 10, txt="RECIBO DE EGRESO", ln=True, align='C')
     
-    # Nro Recibo (Arriba a la derecha)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.set_xy(140, 10)
-    pdf.cell(50, 10, txt=f"Nro: {nro_recibo}", border=1, ln=True, align='C')
+    # Nro Recibo (Derecha)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.set_xy(160, 12)
+    pdf.cell(40, 12, txt=f"Nro: {nro_recibo}", border=1, ln=True, align='C')
     
     # Fecha
-    pdf.ln(10)
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 10, txt=f"Fecha: {fecha}", ln=True, align='R')
+    pdf.set_xy(10, 45)
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(195, 10, txt=f"Fecha: {fecha}", ln=True, align='R')
     
     # Cuerpo
-    pdf.ln(5)
+    pdf.set_xy(15, 60)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(40, 8, txt="Nombre y Apellido: ", ln=False)
-    pdf.line(52, pdf.get_y()+6, 190, pdf.get_y()+6)
-    pdf.ln(12)
-    
-    # Monto Gigante
-    pdf.set_font("Arial", 'B', 22)
-    pdf.cell(0, 15, txt=f"Monto: {monto:,.2f} Bs", ln=True, align='C')
-    pdf.ln(2)
-    
-    # Monto en Letras
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(32, 8, txt="La cantidad de: ", ln=False)
-    pdf.set_font("Arial", 'I', 11)
-    monto_letras = numero_a_letras(monto).upper()
-    
-    # Evitar desbordamiento de letras (Codificado a latin-1)
-    monto_letras = monto_letras.encode('latin-1', 'replace').decode('latin-1')
-    pdf.cell(0, 8, txt=monto_letras, ln=True)
-    pdf.line(42, pdf.get_y(), 190, pdf.get_y())
-    pdf.ln(6)
-    
-    # Concepto
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(22, 8, txt="Concepto: ", ln=False)
-    pdf.set_font("Arial", 'I', 11)
-    concepto_limpio = str(concepto)[:85].encode('latin-1', 'replace').decode('latin-1')
-    pdf.cell(0, 8, txt=concepto_limpio, ln=True)
-    pdf.line(32, pdf.get_y(), 190, pdf.get_y())
+    pdf.cell(45, 10, txt="Beneficiario: ", ln=False)
+    pdf.line(45, 68, 195, 68)
     pdf.ln(15)
     
-    # Checkboxes y Firma
+    # Monto Destacado
+    pdf.set_x(15)
+    pdf.set_font("Arial", 'B', 24)
+    pdf.cell(185, 15, txt=f"Monto: {monto:,.2f} Bs", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Monto en Letras
+    pdf.set_x(15)
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(90, 8, txt="Forma de pago:   [   ] Efectivo     [   ] Banco", ln=False)
+    pdf.cell(35, 8, txt="La cantidad de: ", ln=False)
+    pdf.set_font("Arial", 'I', 11)
+    monto_letras = numero_a_letras(monto).upper()
+    monto_letras = monto_letras.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(150, 8, txt=monto_letras, align='L')
+    pdf.line(50, pdf.get_y(), 195, pdf.get_y())
+    pdf.ln(5)
+    
+    # Concepto
+    pdf.set_x(15)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(25, 8, txt="Concepto: ", ln=False)
+    pdf.set_font("Arial", 'I', 11)
+    concepto_limpio = str(concepto)[:150].encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(160, 8, txt=concepto_limpio, align='L')
+    pdf.line(40, pdf.get_y(), 195, pdf.get_y())
+    pdf.ln(15)
+    
+    # Firma
+    pdf.set_x(15)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(100, 8, txt="Forma de pago:  [  ] Efectivo     [  ] Banco", ln=False)
     pdf.cell(20, 8, txt="Firma: ", ln=False)
-    pdf.line(135, pdf.get_y()+6, 190, pdf.get_y()+6)
+    pdf.line(145, pdf.get_y()+6, 195, pdf.get_y()+6)
     
     return pdf.output(dest="S").encode("latin-1")
 
@@ -384,12 +391,13 @@ if login():
         with tabs[2]:
             st.header("📤 Registro de Egresos Fijos / Nómina")
             
-            # --- ZONA DE DESCARGA DE RECIBO ---
+            # --- ZONA DE DESCARGA DE RECIBO CORREGIDA ---
             if "pdf_eg" in st.session_state:
                 st.success(f"✅ ¡Pago guardado exitosamente! Se generó el Recibo Nro: {st.session_state.nro_eg}")
                 col_btn1, col_btn2 = st.columns([1, 2])
                 with col_btn1:
-                    st.download_button("🖨️ DESCARGAR RECIBO EN PDF", data=st.session_state.pdf_eg, file_name=f"Recibo_{st.session_state.nro_eg}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+                    # KEY ÚNICO PARA EVITAR ERROR
+                    st.download_button("🖨️ DESCARGAR RECIBO EN PDF", data=st.session_state.pdf_eg, file_name=f"Recibo_{st.session_state.nro_eg}.pdf", mime="application/pdf", type="primary", use_container_width=True, key=f"dl_eg_{st.session_state.nro_eg}")
                 st.markdown("---")
             
             if "key_eg" not in st.session_state: st.session_state.key_eg = 0
@@ -444,7 +452,6 @@ if login():
             try:
                 df_egr_view = conn.read(worksheet="EGRESOS", ttl="10m")
                 if df_egr_view is not None and not df_egr_view.empty:
-                    # Garantizar que la columna Nro_Recibo sea la primera visualmente
                     cols = df_egr_view.columns.tolist()
                     if "Nro_Recibo" in cols:
                         cols.insert(0, cols.pop(cols.index("Nro_Recibo")))
@@ -464,12 +471,13 @@ if login():
             st.header("🛠️ Registro de Otros Egresos")
             st.write("Aquí puedes registrar gastos operativos, compras de insumos, reparaciones, etc.")
             
-            # --- ZONA DE DESCARGA DE RECIBO ---
+            # --- ZONA DE DESCARGA DE RECIBO CORREGIDA ---
             if "pdf_oe" in st.session_state:
                 st.success(f"✅ ¡Gasto registrado! Se generó el Recibo Nro: {st.session_state.nro_oe}")
                 col_btno1, col_btno2 = st.columns([1, 2])
                 with col_btno1:
-                    st.download_button("🖨️ DESCARGAR RECIBO EN PDF", data=st.session_state.pdf_oe, file_name=f"Recibo_{st.session_state.nro_oe}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+                    # KEY ÚNICO PARA EVITAR ERROR
+                    st.download_button("🖨️ DESCARGAR RECIBO EN PDF", data=st.session_state.pdf_oe, file_name=f"Recibo_{st.session_state.nro_oe}.pdf", mime="application/pdf", type="primary", use_container_width=True, key=f"dl_oe_{st.session_state.nro_oe}")
                 st.markdown("---")
             
             if "key_oe" not in st.session_state: st.session_state.key_oe = 0
@@ -600,7 +608,8 @@ if login():
                         st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
                         
                         pdf_data_ingresos = generar_pdf_ingresos(resumen_final, f_ini, f_fin, total_general, apostol, presbiterio)
-                        st.download_button(label="📄 DESCARGAR REPORTE DE INGRESOS EN PDF", data=pdf_data_ingresos, file_name=f"Reporte_Ingresos_{f_ini}_al_{f_fin}.pdf", mime="application/pdf", type="primary")
+                        # KEY ÚNICO PARA REPORTE
+                        st.download_button(label="📄 DESCARGAR REPORTE DE INGRESOS EN PDF", data=pdf_data_ingresos, file_name=f"Reporte_Ingresos_{f_ini}_al_{f_fin}.pdf", mime="application/pdf", type="primary", key="rep_ing_pdf")
                     else: st.warning("No hay datos para estos filtros.")
                 else: st.info("Base de datos sin registros.")
             except Exception as e: st.error(f"Error al procesar ingresos: {e}")
@@ -622,13 +631,13 @@ if login():
                         total_egresos = df_fil_egr['Total_Bs'].sum()
                         st.metric("TOTAL PAGADO EN EL PERÍODO (Bs)", f"{total_egresos:,.2f} Bs")
                         
-                        # Reordenar para que se vea el recibo de primero
                         cols = df_fil_egr.columns.tolist()
                         if "Nro_Recibo" in cols: cols.insert(0, cols.pop(cols.index("Nro_Recibo")))
                         st.dataframe(df_fil_egr[cols], use_container_width=True)
 
                         pdf_data = generar_pdf_egresos(df_fil_egr, fe_ini, fe_fin, total_egresos)
-                        st.download_button(label="📄 DESCARGAR REPORTE DE EGRESOS EN PDF", data=pdf_data, file_name=f"Reporte_Egresos_{fe_ini}_al_{fe_fin}.pdf", mime="application/pdf", type="primary")
+                        # KEY ÚNICO PARA REPORTE
+                        st.download_button(label="📄 DESCARGAR REPORTE DE EGRESOS EN PDF", data=pdf_data, file_name=f"Reporte_Egresos_{fe_ini}_al_{fe_fin}.pdf", mime="application/pdf", type="primary", key="rep_egr_pdf")
                     else: st.warning("No hay egresos registrados en este rango de fechas.")
                 else: st.info("Base de datos de Egresos vacía.")
             except Exception as e: st.error(f"Error al procesar egresos: {e}")
@@ -656,7 +665,8 @@ if login():
                         st.dataframe(df_fil_oe[cols], use_container_width=True)
 
                         pdf_data_oe = generar_pdf_otros_egresos(df_fil_oe, foe_ini, foe_fin, total_otros_egresos)
-                        st.download_button(label="📄 DESCARGAR REPORTE DE OTROS EGRESOS EN PDF", data=pdf_data_oe, file_name=f"Reporte_OtrosEgresos_{foe_ini}_al_{foe_fin}.pdf", mime="application/pdf", type="primary")
+                        # KEY ÚNICO PARA REPORTE
+                        st.download_button(label="📄 DESCARGAR REPORTE DE OTROS EGRESOS EN PDF", data=pdf_data_oe, file_name=f"Reporte_OtrosEgresos_{foe_ini}_al_{foe_fin}.pdf", mime="application/pdf", type="primary", key="rep_oe_pdf")
                     else: st.warning("No hay otros egresos registrados en este rango de fechas.")
                 else: st.info("Base de datos de Otros Egresos vacía.")
             except Exception as e: st.error(f"Error al procesar otros egresos: {e}")
