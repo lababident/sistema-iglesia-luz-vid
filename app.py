@@ -224,6 +224,11 @@ if login():
         # --- PESTAÑA INGRESOS ---
         with tabs[1]:
             st.subheader("📥 Cargar Nuevo Registro")
+            
+            # Inicializamos el contador para el truco de reiniciar campos
+            if "key_ing" not in st.session_state:
+                st.session_state.key_ing = 0
+                
             with st.container(border=True):
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -232,15 +237,15 @@ if login():
                     tipo_sel = st.radio("Clasificación", ["Ofrenda", "Diezmo"], key="ing_tipo", horizontal=True)
                 with col2:
                     met_sel = st.selectbox("Método de Pago", METODOS, key="ing_metodo")
-                    monto_in = st.number_input("Monto Recibido", min_value=0.0, step=0.01, key="ing_monto")
+                    monto_in = st.number_input("Monto Recibido", min_value=0.0, step=0.01, key=f"ing_monto_{st.session_state.key_ing}")
                     tasa_v = 1.0; ref_v = ""; banco_v = ""
                     
                     if met_sel == "USD en Efectivo":
                         tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="ing_tasa")
                         f_op_v = str(f_rec)
                     elif met_sel in ["Transferencia / PM", "Punto"]:
-                        banco_v = st.text_input("Banco", key="ing_banco") if met_sel == "Transferencia / PM" else "Punto"
-                        ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key="ing_ref")
+                        banco_v = st.text_input("Banco", key=f"ing_banco_{st.session_state.key_ing}") if met_sel == "Transferencia / PM" else "Punto"
+                        ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key=f"ing_ref_{st.session_state.key_ing}")
                         f_op_v = str(st.date_input("Fecha Operación", date.today(), key="ing_f_op"))
                     else:
                         f_op_v = str(f_rec)
@@ -252,18 +257,15 @@ if login():
                     
                     if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                         try:
-                            # 1. Leer la base de datos actual para validar
                             try:
                                 df_actual = conn.read(worksheet="INGRESOS", ttl="10m")
                             except:
                                 df_actual = None
 
                             es_duplicado = False
-                            
                             ref_str = str(ref_v).strip()
                             f_op_str = str(f_op_v).strip()
 
-                            # 2. Validar duplicados
                             if df_actual is not None and not df_actual.empty and met_sel in ["Transferencia / PM", "Punto"] and ref_str != "":
                                 refs_limpias = df_actual['Referencia'].astype(str).str.replace('.0', '', regex=False).str.strip()
                                 fechas_limpias = df_actual['Fecha_Op'].astype(str).str.strip()
@@ -277,7 +279,6 @@ if login():
                                 if not duplicados.empty:
                                     es_duplicado = True
 
-                            # 3. Tomar acción
                             if es_duplicado:
                                 st.error(f"⚠️ ¡ALERTA! Ya existe un pago registrado el {f_op_str} con la referencia '{ref_str}'.")
                             elif monto_in <= 0:
@@ -300,12 +301,8 @@ if login():
                                 conn.update(worksheet="INGRESOS", data=df_update[columnas_orden])
                                 st.cache_data.clear()
                                 
-                                # 4. VACIAR LOS CAMPOS (Forzando los valores en el session_state)
-                                st.session_state.ing_monto = 0.0
-                                if "ing_banco" in st.session_state:
-                                    st.session_state.ing_banco = ""
-                                if "ing_ref" in st.session_state:
-                                    st.session_state.ing_ref = ""
+                                # EL TRUCO MAGICO: Le sumamos 1 al contador y los campos nacen en blanco
+                                st.session_state.key_ing += 1
                                 
                                 st.success("¡Registro guardado exitosamente!")
                                 st.rerun()
@@ -327,9 +324,26 @@ if login():
                 else: st.write("No hay registros para mostrar.")
             except: st.warning("Conectando con la base de datos...")
 
+            st.markdown("---")
+            st.subheader("📋 Gestión de Registros (Editar / Borrar)")
+            try:
+                df_gestion = conn.read(worksheet="INGRESOS", ttl="10m")
+                if df_gestion is not None and not df_gestion.empty:
+                    df_editado = st.data_editor(df_gestion, num_rows="dynamic", use_container_width=True, key="gestor_ingresos")
+                    if st.button("🔄 APLICAR CAMBIOS EN LA BASE DE DATOS", type="primary"):
+                        conn.update(worksheet="INGRESOS", data=df_editado)
+                        st.cache_data.clear()
+                        st.success("¡Base de datos actualizada!")
+                        st.rerun()
+                else: st.write("No hay registros para mostrar.")
+            except: st.warning("Conectando con la base de datos...")
+
         # --- PESTAÑA EGRESOS ---
         with tabs[2]:
             st.header("📤 Registro de Egresos Fijos / Nómina")
+            
+            if "key_eg" not in st.session_state:
+                st.session_state.key_eg = 0
             
             try:
                 df_emp = conn.read(worksheet="EMPLEADOS", ttl="10m")
@@ -342,10 +356,10 @@ if login():
                 col_e1, col_e2 = st.columns(2)
                 with col_e1:
                     nom_e = st.selectbox("Beneficiario / Empleado", lista_empleados, key="eg_nom")
-                    monto_usd_e = st.number_input("Monto en USD", min_value=0.0, step=0.01, key="eg_monto")
+                    monto_usd_e = st.number_input("Monto en USD", min_value=0.0, step=0.01, key=f"eg_monto_{st.session_state.key_eg}")
                 with col_e2:
                     tasa_e = st.number_input("Tasa BCV del día", min_value=1.0, value=36.0, key="eg_tasa")
-                    nota_e = st.text_area("Observaciones", placeholder="Ej: Pago de quincena...", key="eg_obs")
+                    nota_e = st.text_area("Observaciones", placeholder="Ej: Pago de quincena...", key=f"eg_obs_{st.session_state.key_eg}")
                     st.metric("Total a Pagar (Bs)", f"{(monto_usd_e * tasa_e):,.2f} Bs")
                 
                 if st.button("💸 REGISTRAR PAGO FIJO", use_container_width=True):
@@ -362,6 +376,10 @@ if login():
                         
                         conn.update(worksheet="EGRESOS", data=df_eg_final)
                         st.cache_data.clear()
+                        
+                        # EL TRUCO MAGICO
+                        st.session_state.key_eg += 1
+                        
                         st.success("Pago registrado correctamente")
                         st.rerun()
                     except Exception as e: st.error(f"Error: {e}")
@@ -385,14 +403,17 @@ if login():
             st.header("🛠️ Registro de Otros Egresos")
             st.write("Aquí puedes registrar gastos operativos, compras de insumos, reparaciones, etc.")
             
+            if "key_oe" not in st.session_state:
+                st.session_state.key_oe = 0
+            
             with st.container(border=True):
                 col_oe1, col_oe2 = st.columns(2)
                 with col_oe1:
-                    desc_oe = st.text_input("Descripción del gasto", placeholder="Ej: Compra de artículos de limpieza", key="oe_desc")
+                    desc_oe = st.text_input("Descripción del gasto", placeholder="Ej: Compra de artículos de limpieza", key=f"oe_desc_{st.session_state.key_oe}")
                     fecha_oe = st.date_input("Fecha", date.today(), key="oe_fecha")
                 with col_oe2:
-                    monto_oe = st.number_input("Monto", min_value=0.0, step=0.01, key="oe_monto")
-                    obs_oe = st.text_area("Observaciones", placeholder="Ej: Factura #1234", key="oe_obs")
+                    monto_oe = st.number_input("Monto", min_value=0.0, step=0.01, key=f"oe_monto_{st.session_state.key_oe}")
+                    obs_oe = st.text_area("Observaciones", placeholder="Ej: Factura #1234", key=f"oe_obs_{st.session_state.key_oe}")
                 
                 if st.button("🔧 REGISTRAR GASTO", use_container_width=True):
                     if desc_oe and monto_oe > 0:
@@ -408,6 +429,10 @@ if login():
                             
                             conn.update(worksheet="OTROS_EGRESOS", data=df_oe_final)
                             st.cache_data.clear()
+                            
+                            # EL TRUCO MAGICO
+                            st.session_state.key_oe += 1
+                            
                             st.success("Gasto registrado correctamente")
                             st.rerun()
                         except Exception as e: st.error(f"Error: {e}. Crea la pestaña OTROS_EGRESOS en Sheets.")
@@ -608,6 +633,7 @@ if login():
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
+
 
 
 
