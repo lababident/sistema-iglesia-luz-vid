@@ -239,7 +239,7 @@ if login():
                         tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="ing_tasa")
                         f_op_v = str(f_rec)
                     elif met_sel in ["Transferencia / PM", "Punto"]:
-                        banco_v = st.text_input("Banco Emisor", key="ing_banco") if met_sel == "Transferencia / PM" else "Punto"
+                        banco_v = st.text_input("Banco", key="ing_banco") if met_sel == "Transferencia / PM" else "Punto"
                         ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key="ing_ref")
                         f_op_v = str(st.date_input("Fecha Operación", date.today(), key="ing_f_op"))
                     else:
@@ -260,13 +260,11 @@ if login():
 
                             es_duplicado = False
                             
-                            # Limpiar strings para evitar falsos negativos o decimales fantasma de Sheets
                             ref_str = str(ref_v).strip()
                             f_op_str = str(f_op_v).strip()
 
-                            # 2. Validar solo si el método es Transferencia o Punto y hay referencia
+                            # 2. Validar duplicados
                             if df_actual is not None and not df_actual.empty and met_sel in ["Transferencia / PM", "Punto"] and ref_str != "":
-                                # Forzamos a que todo sea texto y quitamos ".0" por si Sheets lo vuelve decimal
                                 refs_limpias = df_actual['Referencia'].astype(str).str.replace('.0', '', regex=False).str.strip()
                                 fechas_limpias = df_actual['Fecha_Op'].astype(str).str.strip()
                                 
@@ -279,13 +277,12 @@ if login():
                                 if not duplicados.empty:
                                     es_duplicado = True
 
-                            # 3. Tomar acción: Bloquear o Guardar
+                            # 3. Tomar acción
                             if es_duplicado:
-                                st.error(f"⚠️ ¡ALERTA! Ya existe un pago registrado el {f_op_str} con la referencia '{ref_str}'. Revisa la tabla abajo para evitar cargarlo dos veces.")
+                                st.error(f"⚠️ ¡ALERTA! Ya existe un pago registrado el {f_op_str} con la referencia '{ref_str}'.")
                             elif monto_in <= 0:
                                 st.error("⚠️ El monto debe ser mayor a 0 para poder guardarlo.")
                             else:
-                                # Guardar normalmente
                                 columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", "Total_Bs", "Diezmo_10"]
                                 nuevo = pd.DataFrame([{
                                     "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
@@ -303,10 +300,12 @@ if login():
                                 conn.update(worksheet="INGRESOS", data=df_update[columnas_orden])
                                 st.cache_data.clear()
                                 
-                                # 4. VACIAR LOS CAMPOS (Borrando su memoria de sesión)
-                                for key in ["ing_monto", "ing_banco", "ing_ref"]:
-                                    if key in st.session_state:
-                                        del st.session_state[key]
+                                # 4. VACIAR LOS CAMPOS (Forzando los valores en el session_state)
+                                st.session_state.ing_monto = 0.0
+                                if "ing_banco" in st.session_state:
+                                    st.session_state.ing_banco = ""
+                                if "ing_ref" in st.session_state:
+                                    st.session_state.ing_ref = ""
                                 
                                 st.success("¡Registro guardado exitosamente!")
                                 st.rerun()
@@ -609,5 +608,6 @@ if login():
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
+
 
 
