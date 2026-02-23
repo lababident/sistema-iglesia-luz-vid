@@ -376,3 +376,12 @@ if login():
                 df_oe_view = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
                 if df_oe_view is not None and not df_oe_view.empty:
                     df_oe_edit = st.data_editor(df_oe_view, num_rows="dynamic", use_container_width=True, key="gestor_otros_egresos")
+                    if st.button("🔄 APLICAR CAMBIOS EN OTROS EGRESOS", type="primary"):
+                        conn.update(worksheet="OTROS_EGRESOS", data=df_oe_edit)
+                        st.cache_data.clear()
+                        st.success("¡Otros egresos actualizados!")
+                        st.rerun()
+                else: 
+                    st.write("Aún no hay otros egresos registrados.")
+            except: 
+                st.info("Sincronizando o buscando pestaña OTROS_EGRESOS...")
