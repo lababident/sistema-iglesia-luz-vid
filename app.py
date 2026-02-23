@@ -233,34 +233,47 @@ if login():
                 with col2:
                     met_sel = st.selectbox("Método de Pago", METODOS, key="ing_metodo")
                     monto_in = st.number_input("Monto Recibido", min_value=0.0, step=0.01, key="ing_monto")
-                    tasa_v = 1.0; ref_v = "N/A"; banco_v = "N/A"; f_op_v = str(f_rec)
+                    tasa_v = 1.0; ref_v = ""; banco_v = ""
+                    
                     if met_sel == "USD en Efectivo":
                         tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="ing_tasa")
+                        f_op_v = str(f_rec)
                     elif met_sel in ["Transferencia / PM", "Punto"]:
                         banco_v = st.text_input("Banco Emisor", key="ing_banco") if met_sel == "Transferencia / PM" else "Punto"
                         ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key="ing_ref")
                         f_op_v = str(st.date_input("Fecha Operación", date.today(), key="ing_f_op"))
+                    else:
+                        f_op_v = str(f_rec)
+                        
                 with col3:
                     total_bs = monto_in * tasa_v if met_sel == "USD en Efectivo" else monto_in
                     st.metric("Total en Bolívares", f"{total_bs:,.2f} Bs")
                     st.metric("10% Correspondiente", f"{(total_bs * 0.10):,.2f} Bs")
+                    
                     if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                         try:
-                            # 1. Leer la base de datos actual PRIMERO para validar
+                            # 1. Leer la base de datos actual para validar
                             try:
                                 df_actual = conn.read(worksheet="INGRESOS", ttl="10m")
                             except:
                                 df_actual = None
 
                             es_duplicado = False
+                            
+                            # Limpiar strings para evitar falsos negativos o decimales fantasma de Sheets
+                            ref_str = str(ref_v).strip()
+                            f_op_str = str(f_op_v).strip()
 
-                            # 2. Validar solo si el método es Transferencia o Punto
-                            if df_actual is not None and not df_actual.empty and met_sel in ["Transferencia / PM", "Punto"]:
-                                # Filtramos si coinciden la Fecha de Operación y la Referencia
+                            # 2. Validar solo si el método es Transferencia o Punto y hay referencia
+                            if df_actual is not None and not df_actual.empty and met_sel in ["Transferencia / PM", "Punto"] and ref_str != "":
+                                # Forzamos a que todo sea texto y quitamos ".0" por si Sheets lo vuelve decimal
+                                refs_limpias = df_actual['Referencia'].astype(str).str.replace('.0', '', regex=False).str.strip()
+                                fechas_limpias = df_actual['Fecha_Op'].astype(str).str.strip()
+                                
                                 duplicados = df_actual[
                                     (df_actual['Metodo'].isin(["Transferencia / PM", "Punto"])) & 
-                                    (df_actual['Fecha_Op'].astype(str) == str(f_op_v)) & 
-                                    (df_actual['Referencia'].astype(str) == str(ref_v))
+                                    (fechas_limpias == f_op_str) & 
+                                    (refs_limpias == ref_str)
                                 ]
                                 
                                 if not duplicados.empty:
@@ -268,14 +281,16 @@ if login():
 
                             # 3. Tomar acción: Bloquear o Guardar
                             if es_duplicado:
-                                st.error(f"⚠️ ¡ALERTA! Ya existe un pago registrado el {f_op_v} con la referencia '{ref_v}'. Revisa la tabla abajo para evitar cargarlo dos veces.")
+                                st.error(f"⚠️ ¡ALERTA! Ya existe un pago registrado el {f_op_str} con la referencia '{ref_str}'. Revisa la tabla abajo para evitar cargarlo dos veces.")
+                            elif monto_in <= 0:
+                                st.error("⚠️ El monto debe ser mayor a 0 para poder guardarlo.")
                             else:
-                                # Si no es duplicado, procedemos a guardar normalmente
+                                # Guardar normalmente
                                 columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", "Total_Bs", "Diezmo_10"]
                                 nuevo = pd.DataFrame([{
                                     "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
-                                    "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
-                                    "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
+                                    "Metodo": met_sel, "Banco": banco_v, "Referencia": ref_str,
+                                    "Fecha_Op": f_op_str, "Monto_Orig": float(monto_in),
                                     "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
                                     "Diezmo_10": float(total_bs * 0.10)
                                 }])
@@ -287,6 +302,12 @@ if login():
                                 
                                 conn.update(worksheet="INGRESOS", data=df_update[columnas_orden])
                                 st.cache_data.clear()
+                                
+                                # 4. VACIAR LOS CAMPOS (Borrando su memoria de sesión)
+                                for key in ["ing_monto", "ing_banco", "ing_ref"]:
+                                    if key in st.session_state:
+                                        del st.session_state[key]
+                                
                                 st.success("¡Registro guardado exitosamente!")
                                 st.rerun()
                                 
@@ -588,4 +609,5 @@ if login():
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
+
 
