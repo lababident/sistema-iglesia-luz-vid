@@ -109,6 +109,52 @@ def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
 
     return pdf.output(dest="S").encode("latin-1")
 
+# --- NUEVA FUNCIÓN PDF PARA OTROS EGRESOS ---
+def generar_pdf_otros_egresos(df, f_ini, f_fin, total_monto):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    pdf.set_font("Arial", 'B', 15)
+    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(190, 8, txt="Reporte de Otros Egresos (Gastos Operativos)", ln=True, align='C')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
+    pdf.ln(5)
+
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(30, 8, "Fecha", 1, 0, 'C')
+    pdf.cell(60, 8, "Descripción", 1, 0, 'C')
+    pdf.cell(40, 8, "Monto", 1, 0, 'C')
+    pdf.cell(60, 8, "Observaciones", 1, 1, 'C')
+
+    pdf.set_font("Arial", '', 8)
+    for i, row in df.iterrows():
+        fecha_str = str(row.get('Fecha', ''))
+        desc_str = str(row.get('Descripcion', ''))[:35] 
+        obs_str = str(row.get('Observaciones', ''))[:35]
+        
+        desc_str = desc_str.encode('latin-1', 'replace').decode('latin-1')
+        obs_str = obs_str.encode('latin-1', 'replace').decode('latin-1')
+        
+        try:
+            monto_val = float(row.get('Monto', 0))
+            monto_str = f"{monto_val:,.2f}"
+        except:
+            monto_str = str(row.get('Monto', '0'))
+
+        pdf.cell(30, 8, fecha_str, 1, 0, 'C')
+        pdf.cell(60, 8, desc_str, 1, 0, 'L')
+        pdf.cell(40, 8, monto_str, 1, 0, 'R')
+        pdf.cell(60, 8, obs_str, 1, 1, 'L')
+
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(190, 8, txt=f"TOTAL OTROS EGRESOS: {total_monto:,.2f}", ln=True, align='R')
+
+    return pdf.output(dest="S").encode("latin-1")
+
+
 def generar_pdf_ingresos(df_resumen, f_ini, f_fin, total_bs, apostol, presbiterio):
     pdf = FPDF()
     pdf.add_page()
@@ -159,7 +205,8 @@ if login():
 
     rol = st.session_state.usuario_actual
     
-    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "📊 INFORMES", "👥 PERSONAL"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
+    # SE AGREGÓ LA PESTAÑA OTROS EGRESOS
+    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "👥 PERSONAL"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
     tabs = st.tabs(titulos)
 
     # --- PESTAÑA INICIO ---
@@ -238,7 +285,7 @@ if login():
 
         # --- PESTAÑA EGRESOS ---
         with tabs[2]:
-            st.header("📤 Registro de Egresos / Pagos")
+            st.header("📤 Registro de Egresos Fijos / Nómina")
             
             try:
                 df_emp = conn.read(worksheet="EMPLEADOS", ttl="10m")
@@ -257,7 +304,7 @@ if login():
                     nota_e = st.text_area("Observaciones", placeholder="Ej: Pago de quincena...", key="eg_obs")
                     st.metric("Total a Pagar (Bs)", f"{(monto_usd_e * tasa_e):,.2f} Bs")
                 
-                if st.button("💸 REGISTRAR PAGO", use_container_width=True):
+                if st.button("💸 REGISTRAR PAGO FIJO", use_container_width=True):
                     try:
                         nuevo_egreso = pd.DataFrame([{
                             "Fecha": str(date.today()), "Empleado_Beneficiario": nom_e,
@@ -276,12 +323,12 @@ if login():
                     except Exception as e: st.error(f"Error: {e}")
             
             st.markdown("---")
-            st.subheader("📋 Gestión de Egresos (Editar / Borrar)")
+            st.subheader("📋 Gestión de Egresos Fijos (Editar / Borrar)")
             try:
                 df_egr_view = conn.read(worksheet="EGRESOS", ttl="10m")
                 if df_egr_view is not None and not df_egr_view.empty:
                     df_egr_edit = st.data_editor(df_egr_view, num_rows="dynamic", use_container_width=True, key="gestor_egresos")
-                    if st.button("🔄 APLICAR CAMBIOS EN EGRESOS", type="primary"):
+                    if st.button("🔄 APLICAR CAMBIOS EN EGRESOS FIJOS", type="primary"):
                         conn.update(worksheet="EGRESOS", data=df_egr_edit)
                         st.cache_data.clear()
                         st.success("¡Egresos actualizados!")
@@ -289,147 +336,43 @@ if login():
                 else: st.write("Aún no hay egresos registrados.")
             except: st.info("Sincronizando...")
 
-        idx_inf = 3
-        idx_pers = 4
-    else:
-        idx_inf = 1
-
-    # --- PESTAÑA INFORMES ---
-    with tabs[idx_inf]:
-        st.header("📊 Reportes y Auditoría")
-        
-        tipo_reporte = st.radio("Seleccione el módulo a consultar:", ["📥 Reporte de INGRESOS (PDF)", "📤 Reporte de EGRESOS (PDF)"], horizontal=True)
-        st.markdown("---")
-
-        if tipo_reporte == "📥 Reporte de INGRESOS (PDF)":
-            try:
-                df_inf = conn.read(worksheet="INGRESOS", ttl="10m")
-                if df_inf is not None and not df_inf.empty:
-                    df_inf['Fecha'] = pd.to_datetime(df_inf['Fecha']).dt.date
-                    
-                    with st.expander("🔍 Filtros de Reporte de Ingresos", expanded=True):
-                        c_f1, c_f2, c_f3 = st.columns(3)
-                        f_ini = c_f1.date_input("Desde", date.today().replace(day=1))
-                        f_fin = c_f2.date_input("Hasta", date.today())
-                        red_filtro = c_f3.multiselect("Filtrar Redes", ["TODAS"] + REDES, default="TODAS")
-
-                    mask = (df_inf['Fecha'] >= f_ini) & (df_inf['Fecha'] <= f_fin)
-                    df_fil = df_inf.loc[mask]
-                    if "TODAS" not in red_filtro:
-                        df_fil = df_fil[df_fil['Red'].isin(red_filtro)]
-
-                    if not df_fil.empty:
-                        # 1. CÁLCULOS POR MÉTODO DE PAGO
-                        efectivo_bs = df_fil[df_fil['Metodo'] == 'Bolivares en Efectivo']['Total_Bs'].sum()
-                        efectivo_usd_monto = df_fil[df_fil['Metodo'] == 'USD en Efectivo']['Monto_Orig'].sum() # El USD real
-                        efectivo_usd_bs = df_fil[df_fil['Metodo'] == 'USD en Efectivo']['Total_Bs'].sum() # Para la torta
-                        transf_pm = df_fil[df_fil['Metodo'] == 'Transferencia / PM']['Total_Bs'].sum()
-                        punto = df_fil[df_fil['Metodo'] == 'Punto']['Total_Bs'].sum()
-
-                        st.subheader("💰 Resumen por Método de Pago")
-                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                        col_m1.metric("Efectivo Bs", f"{efectivo_bs:,.2f} Bs")
-                        col_m2.metric("Efectivo Divisas", f"${efectivo_usd_monto:,.2f} USD")
-                        col_m3.metric("Transferencias / PM", f"{transf_pm:,.2f} Bs")
-                        col_m4.metric("Punto", f"{punto:,.2f} Bs")
-
-                        # 2. GRÁFICO DE TORTA
-                        datos_torta = pd.DataFrame({
-                            "Método": ["Efectivo Bs", "Efectivo Divisas (en Bs)", "Transferencia / PM", "Punto"],
-                            "Monto": [efectivo_bs, efectivo_usd_bs, transf_pm, punto]
-                        })
-                        datos_torta = datos_torta[datos_torta["Monto"] > 0] # Filtramos los que están en 0
-                        
-                        if not datos_torta.empty:
-                            fig = px.pie(datos_torta, values="Monto", names="Método", title="Distribución de Ingresos (Proporción en Bolívares)", hole=0.3)
-                            st.plotly_chart(fig, use_container_width=True)
-
-                        st.markdown("---")
-
-                        # 3. CÁLCULOS INSTITUCIONALES
-                        total_general = df_fil['Total_Bs'].sum()
-                        apostol = df_fil['Diezmo_10'].sum()
-                        df_presb = df_fil[df_fil['Red'] != "Red de Zabulom"]
-                        presbiterio = df_presb['Diezmo_10'].sum()
-
-                        st.subheader("🏛️ Resumen Institucional")
-                        m1, m2, m3 = st.columns(3)
-                        m1.metric("INGRESO TOTAL", f"{total_general:,.2f} Bs")
-                        m2.metric("APÓSTOL (10% Total)", f"{apostol:,.2f} Bs")
-                        m3.metric("PRESBITERIO", f"{presbiterio:,.2f} Bs")
-
-                        st.markdown("---")
-                        st.subheader("📈 Resumen Detallado por las 16 Redes")
-                        resumen_redes = df_fil.groupby('Red').agg({'Total_Bs': 'sum', 'Diezmo_10': 'sum'}).reset_index()
-                        df_todas_redes = pd.DataFrame({'Red': REDES})
-                        resumen_final = pd.merge(df_todas_redes, resumen_redes, on='Red', how='left').fillna(0)
-                        
-                        st.table(resumen_final.style.format({"Total_Bs": "{:,.2f} Bs", "Diezmo_10": "{:,.2f} Bs"}))
-                        
-                        pdf_data_ingresos = generar_pdf_ingresos(resumen_final, f_ini, f_fin, total_general, apostol, presbiterio)
-                        st.download_button(
-                            label="📄 DESCARGAR REPORTE DE INGRESOS EN PDF",
-                            data=pdf_data_ingresos,
-                            file_name=f"Reporte_Ingresos_{f_ini}_al_{f_fin}.pdf",
-                            mime="application/pdf",
-                            type="primary"
-                        )
-                    else:
-                        st.warning("No hay datos para estos filtros.")
-                else:
-                    st.info("Base de datos sin registros.")
-            except Exception as e: st.error(f"Error al procesar ingresos: {e}")
-
-        else:
-            try:
-                df_egr_inf = conn.read(worksheet="EGRESOS", ttl="10m")
-                if df_egr_inf is not None and not df_egr_inf.empty:
-                    df_egr_inf['Fecha'] = pd.to_datetime(df_egr_inf['Fecha']).dt.date
-                    
-                    with st.expander("🔍 Filtros de Reporte de Egresos", expanded=True):
-                        col_ef1, col_ef2 = st.columns(2)
-                        fe_ini = col_ef1.date_input("Desde", date.today().replace(day=1), key="fe_ini")
-                        fe_fin = col_ef2.date_input("Hasta", date.today(), key="fe_fin")
-
-                    mask_e = (df_egr_inf['Fecha'] >= fe_ini) & (df_egr_inf['Fecha'] <= fe_fin)
-                    df_fil_egr = df_egr_inf.loc[mask_e]
-
-                    if not df_fil_egr.empty:
-                        total_egresos = df_fil_egr['Total_Bs'].sum()
-                        st.metric("TOTAL PAGADO EN EL PERÍODO (Bs)", f"{total_egresos:,.2f} Bs")
-                        st.dataframe(df_fil_egr, use_container_width=True)
-
-                        pdf_data = generar_pdf_egresos(df_fil_egr, fe_ini, fe_fin, total_egresos)
-                        st.download_button(
-                            label="📄 DESCARGAR REPORTE EN PDF",
-                            data=pdf_data,
-                            file_name=f"Reporte_Egresos_{fe_ini}_al_{fe_fin}.pdf",
-                            mime="application/pdf",
-                            type="primary"
-                        )
-                    else:
-                        st.warning("No hay egresos registrados en este rango de fechas.")
-                else:
-                    st.info("Base de datos de Egresos vacía.")
-            except Exception as e: st.error(f"Error al procesar egresos: {e}")
-
-    # --- PESTAÑA PERSONAL ---
-    if rol in ["admin", "tesoreria"]:
-        with tabs[idx_pers]:
-            st.header("👥 Gestión de Empleados y Beneficiarios")
-            st.write("Agrega a las personas que recibirán pagos.")
-            try:
-                df_empleados = conn.read(worksheet="EMPLEADOS", ttl="10m")
-                if df_empleados is None or df_empleados.empty:
-                    df_empleados = pd.DataFrame(columns=["Nombre", "Apellido", "Cargo"])
-            except:
-                df_empleados = pd.DataFrame(columns=["Nombre", "Apellido", "Cargo"])
+        # --- NUEVA PESTAÑA: OTROS EGRESOS ---
+        with tabs[3]:
+            st.header("🛠️ Registro de Otros Egresos")
+            st.write("Aquí puedes registrar gastos operativos, compras de insumos, reparaciones, etc.")
             
-            df_emp_editado = st.data_editor(df_empleados, num_rows="dynamic", use_container_width=True, key="gestor_empleados")
-            
-            if st.button("💾 GUARDAR LISTA DE PERSONAL", type="primary"):
-                df_limpio = df_emp_editado.fillna("")
-                conn.update(worksheet="EMPLEADOS", data=df_limpio)
-                st.cache_data.clear()
-                st.success("¡Directorio de personal actualizado!")
-                st.rerun()
+            with st.container(border=True):
+                col_oe1, col_oe2 = st.columns(2)
+                with col_oe1:
+                    desc_oe = st.text_input("Descripción del gasto", placeholder="Ej: Compra de artículos de limpieza", key="oe_desc")
+                    fecha_oe = st.date_input("Fecha", date.today(), key="oe_fecha")
+                with col_oe2:
+                    monto_oe = st.number_input("Monto (Especificar moneda en observaciones si es necesario)", min_value=0.0, step=0.01, key="oe_monto")
+                    obs_oe = st.text_area("Observaciones", placeholder="Ej: Factura #1234, pagado en Bs", key="oe_obs")
+                
+                if st.button("🔧 REGISTRAR GASTO", use_container_width=True):
+                    if desc_oe and monto_oe > 0:
+                        try:
+                            nuevo_otro_egreso = pd.DataFrame([{
+                                "Descripcion": desc_oe, "Fecha": str(fecha_oe),
+                                "Monto": float(monto_oe), "Observaciones": obs_oe
+                            }])
+                            try:
+                                df_oe_actual = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
+                                df_oe_final = pd.concat([df_oe_actual, nuevo_otro_egreso], ignore_index=True) if df_oe_actual is not None else nuevo_otro_egreso
+                            except: df_oe_final = nuevo_otro_egreso
+                            
+                            conn.update(worksheet="OTROS_EGRESOS", data=df_oe_final)
+                            st.cache_data.clear()
+                            st.success("Gasto registrado correctamente")
+                            st.rerun()
+                        except Exception as e: st.error(f"Error: {e}. Recuerda crear la pestaña OTROS_EGRESOS en tu Google Sheet.")
+                    else:
+                        st.error("Por favor ingresa una descripción y un monto mayor a cero.")
+
+            st.markdown("---")
+            st.subheader("📋 Gestión de Otros Egresos (Editar / Borrar)")
+            try:
+                df_oe_view = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
+                if df_oe_view is not None and not df_oe_view.empty:
+                    df_oe_edit = st.data_editor(df_oe_view, num_rows="dynamic", use_container_width=True, key="gestor_otros_egresos")
