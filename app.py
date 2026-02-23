@@ -246,27 +246,52 @@ if login():
                     st.metric("10% Correspondiente", f"{(total_bs * 0.10):,.2f} Bs")
                     if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                         try:
-                            columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", "Total_Bs", "Diezmo_10"]
-                            nuevo = pd.DataFrame([{
-                                "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
-                                "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
-                                "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
-                                "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
-                                "Diezmo_10": float(total_bs * 0.10)
-                            }])
+                            # 1. Leer la base de datos actual PRIMERO para validar
                             try:
                                 df_actual = conn.read(worksheet="INGRESOS", ttl="10m")
+                            except:
+                                df_actual = None
+
+                            es_duplicado = False
+
+                            # 2. Validar solo si el método es Transferencia o Punto
+                            if df_actual is not None and not df_actual.empty and met_sel in ["Transferencia / PM", "Punto"]:
+                                # Filtramos si coinciden la Fecha de Operación y la Referencia
+                                duplicados = df_actual[
+                                    (df_actual['Metodo'].isin(["Transferencia / PM", "Punto"])) & 
+                                    (df_actual['Fecha_Op'].astype(str) == str(f_op_v)) & 
+                                    (df_actual['Referencia'].astype(str) == str(ref_v))
+                                ]
+                                
+                                if not duplicados.empty:
+                                    es_duplicado = True
+
+                            # 3. Tomar acción: Bloquear o Guardar
+                            if es_duplicado:
+                                st.error(f"⚠️ ¡ALERTA! Ya existe un pago registrado el {f_op_v} con la referencia '{ref_v}'. Revisa la tabla abajo para evitar cargarlo dos veces.")
+                            else:
+                                # Si no es duplicado, procedemos a guardar normalmente
+                                columnas_orden = ["Fecha", "Red", "Clasificacion", "Metodo", "Banco", "Referencia", "Fecha_Op", "Monto_Orig", "Tasa", "Total_Bs", "Diezmo_10"]
+                                nuevo = pd.DataFrame([{
+                                    "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
+                                    "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
+                                    "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
+                                    "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
+                                    "Diezmo_10": float(total_bs * 0.10)
+                                }])
+                                
                                 df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
-                            except: df_update = nuevo
-                            
-                            for col in columnas_orden:
-                                if col not in df_update.columns: df_update[col] = ""
-                            
-                            conn.update(worksheet="INGRESOS", data=df_update[columnas_orden])
-                            st.cache_data.clear()
-                            st.success("¡Registro guardado exitosamente!")
-                            st.rerun()
-                        except Exception as e: st.error(f"Error al guardar: {e}")
+                                
+                                for col in columnas_orden:
+                                    if col not in df_update.columns: df_update[col] = ""
+                                
+                                conn.update(worksheet="INGRESOS", data=df_update[columnas_orden])
+                                st.cache_data.clear()
+                                st.success("¡Registro guardado exitosamente!")
+                                st.rerun()
+                                
+                        except Exception as e: 
+                            st.error(f"Error al procesar: {e}")
 
             st.markdown("---")
             st.subheader("📋 Gestión de Registros (Editar / Borrar)")
@@ -563,3 +588,4 @@ if login():
                 st.cache_data.clear()
                 st.success("¡Directorio de personal actualizado!")
                 st.rerun()
+
