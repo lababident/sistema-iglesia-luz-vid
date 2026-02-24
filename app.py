@@ -401,32 +401,32 @@ if login():
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("Personal")
-                df_p = conn.read(worksheet="EMPLEADOS")
-                df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
-                if st.button("Guardar Personal"):
-                    conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
-                    st.success("Guardado")
+                try:
+                    # Añadimos un TTL de 5 minutos para no saturar la API
+                    df_p = conn.read(worksheet="EMPLEADOS", ttl="5m")
+                    df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
+                    if st.button("Guardar Personal"):
+                        conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
+                        st.cache_data.clear()
+                        st.success("Guardado")
+                        st.rerun()
+                except Exception as e:
+                    st.error("Error al leer 'EMPLEADOS'. Verifica el nombre de la pestaña en Sheets.")
+
             with c2:
                 st.subheader("Catálogo de Gastos")
                 try: 
-                    df_g = conn.read(worksheet="CAT_GASTOS", ttl="0m")
+                    # Usamos TTL para evitar el APIError por exceso de uso
+                    df_g = conn.read(worksheet="CAT_GASTOS", ttl="5m")
                     if df_g is None or df_g.empty:
                         df_g = pd.DataFrame(columns=["Tipo_Gasto"])
-                    # Aseguramos que los datos sean texto limpio
                     df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
                 except: 
                     df_g = pd.DataFrame(columns=["Tipo_Gasto"])
                 
-                # Versión simplificada del editor para evitar el TypeError
-                df_ge = st.data_editor(
-                    df_g, 
-                    num_rows="dynamic", 
-                    key="ed_gast",
-                    use_container_width=True
-                )
+                df_ge = st.data_editor(df_g, num_rows="dynamic", key="ed_gast", use_container_width=True)
                 
                 if st.button("Guardar Catálogo"):
-                    # Filtramos filas vacías
                     df_guardar = df_ge[df_ge["Tipo_Gasto"].astype(str).str.strip() != ""]
                     conn.update(worksheet="CAT_GASTOS", data=df_guardar)
                     st.cache_data.clear()
