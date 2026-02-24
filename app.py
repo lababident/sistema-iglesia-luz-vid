@@ -36,7 +36,7 @@ def login():
         return False
     return True
 
-# --- FUNCIONES ESTÉTICAS, NÚMEROS A LETRAS Y PDF ---
+# --- FUNCIONES AUXILIARES ---
 def get_base64_of_bin_file(bin_file):
     try:
         with open(bin_file, 'rb') as f:
@@ -84,11 +84,6 @@ def numero_a_letras(n):
             resto = numero % 1000
             prefijo = "mil" if miles == 1 else convertir(miles) + " mil"
             return prefijo + (" " + convertir(resto) if resto > 0 else "")
-        if numero < 1000000000:
-            millones = numero // 1000000
-            resto = numero % 1000000
-            prefijo = "un millon" if millones == 1 else convertir(millones) + " millones"
-            return prefijo + (" " + convertir(resto) if resto > 0 else "")
         return str(numero)
 
     entero = int(n)
@@ -109,6 +104,7 @@ def obtener_proximo_recibo(conn):
         except: pass
     return int(max_rec + 1)
 
+# --- FUNCIONES DE PDF ---
 def generar_recibo_pdf(nro_recibo, monto, fecha, concepto):
     pdf = FPDF(orientation='P', unit='mm', format='Letter')
     pdf.add_page()
@@ -190,74 +186,9 @@ def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
     pdf.cell(190, 8, txt=f"TOTAL PAGADO: {total_bs:,.2f} Bs", ln=True, align='R')
     return pdf.output(dest="S").encode("latin-1")
 
-def generar_pdf_otros_egresos(df, f_ini, f_fin, total_monto):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 15)
-    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(190, 8, txt="Reporte de Otros Egresos (Gastos Operativos)", ln=True, align='C')
-    pdf.set_font("Arial", '', 10)
-    pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 9)
-    pdf.cell(20, 8, "Recibo", 1, 0, 'C')
-    pdf.cell(22, 8, "Fecha", 1, 0, 'C')
-    pdf.cell(50, 8, "Descripción", 1, 0, 'C')
-    pdf.cell(30, 8, "Monto Bs", 1, 0, 'C')
-    pdf.cell(68, 8, "Observaciones", 1, 1, 'C')
-    pdf.set_font("Arial", '', 8)
-    for i, row in df.iterrows():
-        rec_str = str(row.get('Nro_Recibo', 'N/A'))
-        fecha_str = str(row.get('Fecha', ''))
-        desc_str = str(row.get('Descripcion', ''))[:25].encode('latin-1', 'replace').decode('latin-1')
-        obs_str = str(row.get('Observaciones', ''))[:40].encode('latin-1', 'replace').decode('latin-1')
-        try: monto_str = f"{float(row.get('Monto', 0)):,.2f}"
-        except: monto_str = str(row.get('Monto', '0'))
-        pdf.cell(20, 8, rec_str, 1, 0, 'C')
-        pdf.cell(22, 8, fecha_str, 1, 0, 'C')
-        pdf.cell(50, 8, desc_str, 1, 0, 'L')
-        pdf.cell(30, 8, monto_str, 1, 0, 'R')
-        pdf.cell(68, 8, obs_str, 1, 1, 'L')
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(190, 8, txt=f"TOTAL OTROS EGRESOS: {total_monto:,.2f}", ln=True, align='R')
-    return pdf.output(dest="S").encode("latin-1")
-
-def generar_pdf_ingresos(df_resumen, f_ini, f_fin, total_bs, apostol, presbiterio):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 15)
-    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(190, 8, txt="Reporte de Ingresos (Diezmos y Ofrendas)", ln=True, align='C')
-    pdf.set_font("Arial", '', 10)
-    pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(63, 8, txt=f"INGRESO TOTAL: {total_bs:,.2f} Bs", border=1, align='C')
-    pdf.cell(63, 8, txt=f"APOSTOL (10%): {apostol:,.2f} Bs", border=1, align='C')
-    pdf.cell(64, 8, txt=f"PRESBITERIO: {presbiterio:,.2f} Bs", border=1, ln=True, align='C')
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(90, 8, "Red", 1, 0, 'C')
-    pdf.cell(50, 8, "Total Ingresado (Bs)", 1, 0, 'C')
-    pdf.cell(50, 8, "Diezmo 10% (Bs)", 1, 1, 'C')
-    pdf.set_font("Arial", '', 9)
-    for i, row in df_resumen.iterrows():
-        red_str = str(row.get('Red', '')).encode('latin-1', 'replace').decode('latin-1')
-        bs_str = f"{float(row.get('Total_Bs', 0)):,.2f}"
-        diezmo_str = f"{float(row.get('Diezmo_10', 0)):,.2f}"
-        pdf.cell(90, 8, red_str, 1, 0, 'L')
-        pdf.cell(50, 8, bs_str, 1, 0, 'R')
-        pdf.cell(50, 8, diezmo_str, 1, 1, 'R')
-    return pdf.output(dest="S").encode("latin-1")
-
 def generar_pdf_caja(df, f_ini, f_fin, t_ing, t_egr, saldo_n):
     pdf = FPDF()
     pdf.add_page()
-    
-    # Encabezado
     pdf.set_font("Arial", 'B', 16)
     pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
     pdf.set_font("Arial", 'B', 12)
@@ -265,33 +196,26 @@ def generar_pdf_caja(df, f_ini, f_fin, t_ing, t_egr, saldo_n):
     pdf.set_font("Arial", '', 10)
     pdf.cell(190, 7, txt=f"Desde: {f_ini} hasta: {f_fin}", ln=True, align='C')
     pdf.ln(5)
-
-    # Resumen Financiero
     pdf.set_fill_color(240, 240, 240)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(63, 8, f"INGRESOS: {t_ing:,.2f} Bs", 1, 0, 'C', True)
     pdf.cell(63, 8, f"EGRESOS: {t_egr:,.2f} Bs", 1, 0, 'C', True)
     pdf.cell(64, 8, f"SALDO NETO: {saldo_n:,.2f} Bs", 1, 1, 'C', True)
     pdf.ln(5)
-
-    # Tabla de Movimientos
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(25, 8, "Fecha", 1, 0, 'C')
     pdf.cell(85, 8, "Descripción", 1, 0, 'C')
     pdf.cell(25, 8, "Entrada", 1, 0, 'C')
     pdf.cell(25, 8, "Salida", 1, 0, 'C')
     pdf.cell(30, 8, "Saldo Acum.", 1, 1, 'C')
-
     pdf.set_font("Arial", '', 8)
     for i, row in df.iterrows():
-        # Limpieza de texto para evitar errores de codificación en Barinas
         desc = str(row['Descripción'])[:50].encode('latin-1', 'replace').decode('latin-1')
         pdf.cell(25, 7, str(row['Fecha']), 1, 0, 'C')
         pdf.cell(85, 7, desc, 1, 0, 'L')
         pdf.cell(25, 7, f"{row['Entrada']:,.2f}", 1, 0, 'R')
         pdf.cell(25, 7, f"{row['Salida']:,.2f}", 1, 0, 'R')
         pdf.cell(30, 7, f"{row['Saldo']:,.2f}", 1, 1, 'R')
-    
     return pdf.output(dest="S").encode("latin-1")
 
 # --- EJECUCIÓN PRINCIPAL ---
@@ -299,21 +223,19 @@ if login():
     aplicar_estetica()
     conn = st.connection("my_database", type=GSheetsConnection)
 
-    # ACTUALIZACIÓN DE REDES (PASO 1)
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", 
              "Red de Niños", "Primicias", "Pacto"]
     
-    # REDES QUE NO PAGAN DIEZMO
     REDES_EXENTAS = ["Primicias", "Pacto"]
-    
     METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
     rol = st.session_state.usuario_actual
-titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "👥 CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
-tabs = st.tabs(titulos)
+    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "👥 CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
+    tabs = st.tabs(titulos)
 
+    # --- PESTAÑA INICIO ---
     with tabs[0]:
         st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
         c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
@@ -326,7 +248,7 @@ tabs = st.tabs(titulos)
             st.rerun()
 
     if rol in ["admin", "tesoreria"]:
-        # --- PESTAÑA INGRESOS (Lógica de Diezmo condicional) ---
+        # --- PESTAÑA INGRESOS ---
         with tabs[1]:
             st.subheader("📥 Cargar Nuevo Registro")
             if "key_ing" not in st.session_state: st.session_state.key_ing = 0
@@ -350,7 +272,6 @@ tabs = st.tabs(titulos)
                     else: f_op_v = str(f_rec)
                 with col3:
                     total_bs = monto_in * tasa_v if met_sel == "USD en Efectivo" else monto_in
-                    # Cálculo de diezmo condicional (PASO 4)
                     diezmo_calculado = 0.0 if red_sel in REDES_EXENTAS else float(total_bs * 0.10)
                     st.metric("Total en Bolívares", f"{total_bs:,.2f} Bs")
                     st.metric("10% Correspondiente", f"{diezmo_calculado:,.2f} Bs")
@@ -358,28 +279,19 @@ tabs = st.tabs(titulos)
                     if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
                         try:
                             df_actual = conn.read(worksheet="INGRESOS", ttl="10m")
-                            ref_str = str(ref_v).strip()
-                            f_op_str = str(f_op_v).strip()
-                            es_duplicado = False
-                            if df_actual is not None and not df_actual.empty and met_sel in ["Transferencia / PM", "Punto"] and ref_str != "":
-                                duplicados = df_actual[(df_actual['Metodo'] == met_sel) & (df_actual['Referencia'].astype(str) == ref_str) & (df_actual['Fecha_Op'].astype(str) == f_op_str)]
-                                if not duplicados.empty: es_duplicado = True
-                            if es_duplicado: st.error("⚠️ ¡ALERTA! Registro duplicado detectado.")
-                            elif monto_in <= 0: st.error("⚠️ Monto inválido.")
-                            else:
-                                nuevo = pd.DataFrame([{
-                                    "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
-                                    "Metodo": met_sel, "Banco": banco_v, "Referencia": ref_str,
-                                    "Fecha_Op": f_op_str, "Monto_Orig": float(monto_in),
-                                    "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
-                                    "Diezmo_10": diezmo_calculado
-                                }])
-                                df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
-                                conn.update(worksheet="INGRESOS", data=df_update)
-                                st.cache_data.clear()
-                                st.session_state.key_ing += 1
-                                st.success("¡Guardado!")
-                                st.rerun()
+                            nuevo = pd.DataFrame([{
+                                "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
+                                "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
+                                "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
+                                "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
+                                "Diezmo_10": diezmo_calculado
+                            }])
+                            df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
+                            conn.update(worksheet="INGRESOS", data=df_update)
+                            st.cache_data.clear()
+                            st.session_state.key_ing += 1
+                            st.success("¡Guardado!")
+                            st.rerun()
                         except Exception as e: st.error(f"Error: {e}")
 
         # --- PESTAÑA EGRESOS FIJOS ---
@@ -413,7 +325,7 @@ tabs = st.tabs(titulos)
                     st.cache_data.clear()
                     st.rerun()
 
-        # --- PESTAÑA OTROS EGRESOS (Con Desplegable de Gastos) ---
+        # --- PESTAÑA OTROS EGRESOS ---
         with tabs[3]:
             st.header("🛠️ Otros Egresos")
             try:
@@ -438,15 +350,13 @@ tabs = st.tabs(titulos)
                     st.cache_data.clear()
                     st.rerun()
 
-    # --- PESTAÑA INFORMES (Con Gráfico de Egresos) ---
+    # --- PESTAÑA INFORMES ---
     idx_inf = 4 if rol in ["admin", "tesoreria"] else 1
     with tabs[idx_inf]:
         st.header("📊 Reportes")
-        f_ini = st.date_input("Desde", date.today().replace(day=1))
-        f_fin = st.date_input("Hasta", date.today())
+        f_ini = st.date_input("Desde", date.today().replace(day=1), key="inf_desde")
+        f_fin = st.date_input("Hasta", date.today(), key="inf_hasta")
         
-        # Gráfico de Egresos (PASO 3)
-        st.subheader("📉 Distribución de Gastos (Fijos vs Operativos)")
         try:
             df_f = conn.read(worksheet="EGRESOS")
             df_o = conn.read(worksheet="OTROS_EGRESOS")
@@ -457,106 +367,63 @@ tabs = st.tabs(titulos)
             if (tf+to) > 0:
                 fig_e = px.pie(values=[tf, to], names=["Fijos (Nómina)", "Otros (Gastos)"], hole=0.4, title="Comparativa de Egresos")
                 st.plotly_chart(fig_e)
-        except: st.info("No hay datos de egresos para el gráfico.")
+        except: st.info("No hay datos para graficar.")
 
-# --- PESTAÑA CAJA (Libro Mayor) ---
-    with tabs[5]:
-        st.header("🏧 Estado de Caja y Saldo Neto")
-        
-        try:
-            # 1. Cargar todas las fuentes de datos
-            df_i = conn.read(worksheet="INGRESOS", ttl="0m")
-            df_ef = conn.read(worksheet="EGRESOS", ttl="0m")
-            df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="0m")
-
-            # 2. Estandarizar Ingresos
-            df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].copy()
-            df_i_std.columns = ['Fecha', 'Descripción', 'Entrada']
-            df_i_std['Salida'] = 0.0
-
-            # 3. Estandarizar Egresos Fijos
-            df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].copy()
-            df_ef_std.columns = ['Fecha', 'Descripción', 'Salida']
-            df_ef_std['Entrada'] = 0.0
-
-            # 4. Estandarizar Otros Egresos
-            df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].copy()
-            df_eo_std.columns = ['Fecha', 'Descripción', 'Salida']
-            df_eo_std['Entrada'] = 0.0
-
-            # 5. Unificar todo en el Libro Mayor
-            libro_mayor = pd.concat([df_i_std, df_ef_std, df_eo_std], ignore_index=True)
-            libro_mayor['Fecha'] = pd.to_datetime(libro_mayor['Fecha']).dt.date
-            libro_mayor = libro_mayor.sort_values(by='Fecha')
-
-            # --- Filtros de Fecha para Caja ---
-            col_f1, col_f2 = st.columns(2)
-            f_desde = col_f1.date_input("Ver desde", date.today().replace(day=1), key="caja_desde")
-            f_hasta = col_f2.date_input("Ver hasta", date.today(), key="caja_hasta")
-
-            mask_caja = (libro_mayor['Fecha'] >= f_desde) & (libro_mayor['Fecha'] <= f_hasta)
-            df_caja_filtrada = libro_mayor.loc[mask_caja].copy()
-
-            # 6. Cálculo de Saldo Acumulado
-            # Primero calculamos el saldo de todo el historial para que sea real
-            libro_mayor['Saldo'] = libro_mayor['Entrada'].cumsum() - libro_mayor['Salida'].cumsum()
-            
-            # Ahora mostramos solo el rango filtrado pero con el saldo correcto
-            df_final_caja = libro_mayor.loc[mask_caja]
-
-            # 7. Métricas visuales
-            total_in = df_caja_filtrada['Entrada'].sum()
-            total_out = df_caja_filtrada['Salida'].sum()
-            saldo_actual = libro_mayor['Saldo'].iloc[-1] if not libro_mayor.empty else 0
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total Ingresos (Período)", f"{total_in:,.2f} Bs", delta_color="normal")
-            m2.metric("Total Egresos (Período)", f"- {total_out:,.2f} Bs", delta_color="inverse")
-            m3.metric("SALDO NETO EN CAJA", f"{saldo_actual:,.2f} Bs")
-
-            st.markdown("---")
-            # Generar los datos para el PDF
-            pdf_caja = generar_pdf_caja(
-                df_final_caja, 
-                f_desde, 
-                f_hasta, 
-                total_in, 
-                total_out, 
-                saldo_actual
-            )
-
-            # Botón de descarga funcional
-            st.download_button(
-                label="📄 DESCARGAR ESTADO DE CUENTA (PDF)",
-                data=pdf_caja,
-                file_name=f"Estado_Caja_{f_desde}_al_{f_hasta}.pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True
-            )
-
-        except Exception as e:
-            st.warning("Para ver la caja, asegúrate de que existan registros en Ingresos y Egresos.")
-            st.error(f"Error: {e}")
-
-    # --- PESTAÑA CONFIG (Personal + Catálogo de Gastos) (PASO 2) ---
+    # --- PESTAÑA CAJA ---
     if rol in ["admin", "tesoreria"]:
         with tabs[5]:
-            st.header("⚙️ Configuración del Sistema")
+            st.header("🏧 Estado de Caja")
+            try:
+                df_i = conn.read(worksheet="INGRESOS", ttl="0m")
+                df_ef = conn.read(worksheet="EGRESOS", ttl="0m")
+                df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="0m")
+
+                # Estandarización para Libro Mayor
+                df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
+                df_i_std['Salida'] = 0.0
+                df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].rename(columns={'Empleado_Beneficiario':'Descripción', 'Total_Bs':'Salida'})
+                df_ef_std['Entrada'] = 0.0
+                df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].rename(columns={'Descripcion':'Descripción', 'Monto':'Salida'})
+                df_eo_std['Entrada'] = 0.0
+
+                libro = pd.concat([df_i_std, df_ef_std, df_eo_std]).sort_values('Fecha')
+                libro['Fecha'] = pd.to_datetime(libro['Fecha']).dt.date
+                libro['Saldo'] = libro['Entrada'].cumsum() - libro['Salida'].cumsum()
+
+                col_c1, col_c2 = st.columns(2)
+                fd = col_c1.date_input("Desde", date.today().replace(day=1), key="caja_fd")
+                fh = col_c2.date_input("Hasta", date.today(), key="caja_fh")
+                
+                df_caja_f = libro[(libro['Fecha'] >= fd) & (libro['Fecha'] <= fh)]
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Ingresos", f"{df_caja_f['Entrada'].sum():,.2f}")
+                m2.metric("Egresos", f"{df_caja_f['Salida'].sum():,.2f}")
+                m3.metric("Saldo Final", f"{libro['Saldo'].iloc[-1] if not libro.empty else 0:,.2f}")
+
+                st.dataframe(df_caja_f, use_container_width=True)
+                
+                if st.button("📄 GENERAR PDF DE CAJA"):
+                    pdf_c = generar_pdf_caja(df_caja_f, fd, fh, df_caja_f['Entrada'].sum(), df_caja_f['Salida'].sum(), libro['Saldo'].iloc[-1])
+                    st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
+            except Exception as e: st.error(f"Error en Caja: {e}")
+
+        # --- PESTAÑA CONFIG ---
+        with tabs[6]:
+            st.header("⚙️ Configuración")
             c1, c2 = st.columns(2)
             with c1:
-                st.subheader("👥 Personal")
-                df_pers = conn.read(worksheet="EMPLEADOS")
-                df_p_edit = st.data_editor(df_pers, num_rows="dynamic", key="ed_p")
-                if st.button("💾 Guardar Personal"):
-                    conn.update(worksheet="EMPLEADOS", data=df_p_edit.fillna(""))
-                    st.success("Actualizado")
+                st.subheader("Personal")
+                df_p = conn.read(worksheet="EMPLEADOS")
+                df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
+                if st.button("Guardar Personal"):
+                    conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
+                    st.success("Guardado")
             with c2:
-                st.subheader("🛠️ Catálogo de Gastos")
-                try: df_gastos = conn.read(worksheet="CAT_GASTOS")
-                except: df_gastos = pd.DataFrame(columns=["Tipo_Gasto"])
-                df_g_edit = st.data_editor(df_gastos, num_rows="dynamic", key="ed_g")
-                if st.button("💾 Guardar Catálogo"):
-                    conn.update(worksheet="CAT_GASTOS", data=df_g_edit.fillna(""))
-                    st.success("Actualizado")
-
+                st.subheader("Catálogo de Gastos")
+                try: df_g = conn.read(worksheet="CAT_GASTOS")
+                except: df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+                df_ge = st.data_editor(df_g, num_rows="dynamic", key="ed_gast")
+                if st.button("Guardar Catálogo"):
+                    conn.update(worksheet="CAT_GASTOS", data=df_ge.fillna(""))
+                    st.success("Guardado")
