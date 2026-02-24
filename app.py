@@ -395,6 +395,7 @@ if login():
                     st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
             except Exception as e: st.error(f"Error en Caja: {e}")
 
+        # --- PESTAÑA CONFIG (Corregida) ---
         with tabs[6]:
             st.header("⚙️ Configuración")
             c1, c2 = st.columns(2)
@@ -409,27 +410,24 @@ if login():
                 st.subheader("Catálogo de Gastos")
                 try: 
                     df_g = conn.read(worksheet="CAT_GASTOS", ttl="0m")
-                    if df_g is None or df_g.empty or "Tipo_Gasto" not in df_g.columns:
+                    if df_g is None or df_g.empty:
                         df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+                    # Aseguramos que los datos sean texto limpio
                     df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
                 except: 
                     df_g = pd.DataFrame(columns=["Tipo_Gasto"])
                 
+                # Versión simplificada del editor para evitar el TypeError
                 df_ge = st.data_editor(
                     df_g, 
                     num_rows="dynamic", 
                     key="ed_gast",
-                    use_container_width=True,
-                    column_config={
-                        "Tipo_Gasto": st.column_config.TextColumn(
-                            "Tipo de Gasto",
-                            placeholder="Ej: Limpieza, Papelería...",
-                            required=True,
-                        )
-                    }
+                    use_container_width=True
                 )
+                
                 if st.button("Guardar Catálogo"):
-                    df_guardar = df_ge[df_ge["Tipo_Gasto"].str.strip() != ""]
+                    # Filtramos filas vacías
+                    df_guardar = df_ge[df_ge["Tipo_Gasto"].astype(str).str.strip() != ""]
                     conn.update(worksheet="CAT_GASTOS", data=df_guardar)
                     st.cache_data.clear()
                     st.success("¡Catálogo actualizado!")
