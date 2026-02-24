@@ -158,39 +158,6 @@ def generar_recibo_pdf(nro_recibo, monto, fecha, concepto):
     pdf.line(145, pdf.get_y()+6, 195, pdf.get_y()+6)
     return pdf.output(dest="S").encode("latin-1")
 
-def generar_pdf_egresos(df, f_ini, f_fin, total_bs):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 15)
-    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(190, 8, txt="Reporte de Egresos Fijos", ln=True, align='C')
-    pdf.set_font("Arial", '', 10)
-    pdf.cell(190, 8, txt=f"Período consultado: {f_ini} al {f_fin}", ln=True, align='C')
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 9)
-    pdf.cell(22, 8, "Recibo", 1, 0, 'C')
-    pdf.cell(22, 8, "Fecha", 1, 0, 'C')
-    pdf.cell(50, 8, "Beneficiario", 1, 0, 'C')
-    pdf.cell(28, 8, "Total Bs", 1, 0, 'C')
-    pdf.cell(68, 8, "Nota", 1, 1, 'C')
-    pdf.set_font("Arial", '', 8)
-    for i, row in df.iterrows():
-        rec_str = str(row.get('Nro_Recibo', 'N/A'))
-        fecha_str = str(row.get('Fecha', ''))
-        ben_str = str(row.get('Empleado_Beneficiario', ''))[:25].encode('latin-1', 'replace').decode('latin-1')
-        obs_str = str(row.get('Observaciones', ''))[:40].encode('latin-1', 'replace').decode('latin-1')
-        bs_str = f"{float(row.get('Total_Bs', 0)):.2f}"
-        pdf.cell(22, 8, rec_str, 1, 0, 'C')
-        pdf.cell(22, 8, fecha_str, 1, 0, 'C')
-        pdf.cell(50, 8, ben_str, 1, 0, 'L')
-        pdf.cell(28, 8, bs_str, 1, 0, 'R')
-        pdf.cell(68, 8, obs_str, 1, 1, 'L')
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(190, 8, txt=f"TOTAL PAGADO: {total_bs:,.2f} Bs", ln=True, align='R')
-    return pdf.output(dest="S").encode("latin-1")
-
 def generar_pdf_caja(df, f_ini, f_fin, t_ing, t_egr, saldo_n):
     pdf = FPDF()
     pdf.add_page()
@@ -259,7 +226,7 @@ if login():
             st.session_state.autenticado = False
             st.rerun()
 
-    # --- MÓDULOS DE CARGA Y EDICIÓN (SOLO ADMIN/TESORERÍA) ---
+    # --- MÓDULOS DE CARGA (SOLO ADMIN/TESORERÍA) ---
     if rol in ["admin", "tesoreria"]:
         
         # --- PESTAÑA INGRESOS ---
@@ -304,25 +271,25 @@ if login():
                             conn.update(worksheet="INGRESOS", data=df_update)
                             st.cache_data.clear()
                             st.session_state.key_ing += 1
-                            st.success("¡Guardado!")
+                            st.success("¡Guardado exitosamente!")
                             st.rerun()
-                        except Exception as e: st.error(f"Error: {e}")
+                        except Exception as e: st.error("Error. Espera 60 segundos por límite de Google.")
 
-            # Módulo de Edición de Ingresos
+            # OPTIMIZACIÓN DE EDICIÓN: CARGA PEREZOSA
             st.markdown("---")
             with st.expander("✏️ Editar o Borrar Registros de Ingresos", expanded=False):
-                try:
-                    df_edit_i = conn.read(worksheet="INGRESOS", ttl="10m")
-                    if not df_edit_i.empty:
-                        df_edited_i = st.data_editor(df_edit_i, num_rows="dynamic", key="edit_ing_table")
-                        if st.button("💾 Guardar Cambios en Ingresos", key="btn_ed_ing"):
-                            conn.update(worksheet="INGRESOS", data=df_edited_i)
-                            st.cache_data.clear()
-                            st.success("Cambios guardados correctamente.")
-                            st.rerun()
-                    else:
-                        st.info("No hay datos para editar.")
-                except Exception as e: st.warning("Aún no hay registros de ingresos creados.")
+                if st.checkbox("Cargar tabla de edición (consume recursos)", key="chk_ed_ing"):
+                    try:
+                        df_edit_i = conn.read(worksheet="INGRESOS", ttl="10m")
+                        if not df_edit_i.empty:
+                            df_edited_i = st.data_editor(df_edit_i, num_rows="dynamic", key="edit_ing_table")
+                            if st.button("💾 Guardar Cambios en Ingresos"):
+                                conn.update(worksheet="INGRESOS", data=df_edited_i)
+                                st.cache_data.clear()
+                                st.success("Cambios guardados.")
+                                st.rerun()
+                        else: st.info("No hay datos.")
+                    except: st.warning("Error de lectura.")
 
         # --- PESTAÑA EGRESOS FIJOS ---
         with tabs[idx_egresos]:
@@ -353,21 +320,19 @@ if login():
                     st.cache_data.clear()
                     st.rerun()
 
-            # Módulo de Edición de Egresos
             st.markdown("---")
             with st.expander("✏️ Editar o Borrar Egresos Fijos", expanded=False):
-                try:
-                    df_edit_ef = conn.read(worksheet="EGRESOS", ttl="10m")
-                    if not df_edit_ef.empty:
-                        df_edited_ef = st.data_editor(df_edit_ef, num_rows="dynamic", key="edit_eg_table")
-                        if st.button("💾 Guardar Cambios en Egresos", key="btn_ed_eg"):
-                            conn.update(worksheet="EGRESOS", data=df_edited_ef)
-                            st.cache_data.clear()
-                            st.success("Cambios guardados correctamente.")
-                            st.rerun()
-                    else:
-                        st.info("No hay datos para editar.")
-                except Exception as e: st.warning("Aún no hay registros creados.")
+                if st.checkbox("Cargar tabla de edición", key="chk_ed_eg"):
+                    try:
+                        df_edit_ef = conn.read(worksheet="EGRESOS", ttl="10m")
+                        if not df_edit_ef.empty:
+                            df_edited_ef = st.data_editor(df_edit_ef, num_rows="dynamic", key="edit_eg_table")
+                            if st.button("💾 Guardar Cambios"):
+                                conn.update(worksheet="EGRESOS", data=df_edited_ef)
+                                st.cache_data.clear()
+                                st.success("Guardado.")
+                                st.rerun()
+                    except: pass
 
         # --- PESTAÑA OTROS EGRESOS ---
         with tabs[idx_otros]:
@@ -393,21 +358,19 @@ if login():
                     st.cache_data.clear()
                     st.rerun()
 
-            # Módulo de Edición de Otros Egresos
             st.markdown("---")
             with st.expander("✏️ Editar o Borrar Otros Egresos", expanded=False):
-                try:
-                    df_edit_oe = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
-                    if not df_edit_oe.empty:
-                        df_edited_oe = st.data_editor(df_edit_oe, num_rows="dynamic", key="edit_oe_table")
-                        if st.button("💾 Guardar Cambios en Otros Egresos", key="btn_ed_oe"):
-                            conn.update(worksheet="OTROS_EGRESOS", data=df_edited_oe)
-                            st.cache_data.clear()
-                            st.success("Cambios guardados correctamente.")
-                            st.rerun()
-                    else:
-                        st.info("No hay datos para editar.")
-                except Exception as e: st.warning("Aún no hay registros creados.")
+                if st.checkbox("Cargar tabla de edición", key="chk_ed_oe"):
+                    try:
+                        df_edit_oe = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
+                        if not df_edit_oe.empty:
+                            df_edited_oe = st.data_editor(df_edit_oe, num_rows="dynamic", key="edit_oe_table")
+                            if st.button("💾 Guardar Cambios"):
+                                conn.update(worksheet="OTROS_EGRESOS", data=df_edited_oe)
+                                st.cache_data.clear()
+                                st.success("Guardado.")
+                                st.rerun()
+                    except: pass
 
     # --- INFORMES (TODOS LOS ROLES) ---
     with tabs[idx_informes]:
@@ -459,7 +422,7 @@ if login():
             if st.button("📄 GENERAR PDF DE CAJA"):
                 pdf_c = generar_pdf_caja(df_caja_f, fd, fh, df_caja_f['Entrada'].sum(), df_caja_f['Salida'].sum(), libro['Saldo'].iloc[-1])
                 st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
-        except Exception as e: st.error(f"Error en Caja: {e}")
+        except Exception as e: st.error("Error al cargar la caja.")
 
     # --- CAJA DIVISAS ---
     with tabs[idx_divisas]:
@@ -514,8 +477,7 @@ if login():
                                     st.success(f"¡Movimiento de {moneda} registrado!")
                                     st.rerun()
                                 except Exception as e: 
-                                    # MOSTRAR EL ERROR REAL AQUÍ
-                                    st.error(f"Error técnico al guardar: {e}")
+                                    st.error("Espera unos segundos. Límite de Google excedido.")
                             else:
                                 st.error("Por favor, ingresa una descripción.")
                 
@@ -526,19 +488,19 @@ if login():
                 else:
                     st.info(f"No hay movimientos registrados en {moneda}.")
 
-        # Módulo de Edición General de Divisas (Solo Admin/Tesorería)
         if rol in ["admin", "tesoreria"]:
             st.markdown("---")
-            with st.expander("✏️ Editar o Borrar Cualquier Registro de Divisas", expanded=False):
-                if not df_div.empty:
-                    df_edited_div = st.data_editor(df_div, num_rows="dynamic", key="edit_div_table", use_container_width=True)
-                    if st.button("💾 Guardar Cambios en Divisas", key="btn_ed_div"):
-                        conn.update(worksheet="CAJA_DIVISAS", data=df_edited_div)
-                        st.cache_data.clear()
-                        st.success("Cambios guardados correctamente.")
-                        st.rerun()
-                else:
-                    st.info("No hay datos de divisas para editar aún.")
+            with st.expander("✏️ Editar o Borrar Registros de Divisas", expanded=False):
+                if st.checkbox("Cargar tabla de edición (Divisas)", key="chk_ed_div"):
+                    if not df_div.empty:
+                        df_edited_div = st.data_editor(df_div, num_rows="dynamic", key="edit_div_table", use_container_width=True)
+                        if st.button("💾 Guardar Cambios en Divisas"):
+                            conn.update(worksheet="CAJA_DIVISAS", data=df_edited_div)
+                            st.cache_data.clear()
+                            st.success("Cambios guardados.")
+                            st.rerun()
+                    else:
+                        st.info("No hay datos de divisas para editar.")
 
     # --- CONFIGURACIÓN (SOLO ADMIN/TESORERÍA) ---
     if rol in ["admin", "tesoreria"]:
@@ -555,8 +517,7 @@ if login():
                         st.cache_data.clear()
                         st.success("Guardado")
                         st.rerun()
-                except Exception as e:
-                    st.error("Error al leer 'EMPLEADOS'. Verifica tu conexión.")
+                except: st.error("Error al leer 'EMPLEADOS'.")
 
             with c2:
                 st.subheader("Catálogo de Gastos")
