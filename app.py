@@ -53,11 +53,6 @@ def aplicar_estetica():
         .logo-esquina {{ position: absolute; top: -50px; right: 0px; width: 70px; }}
         div.stButton > button {{ background-color: #8D6E63; color: white; border-radius: 8px; border: none; font-weight: bold; }}
         div.stButton > button:hover {{ background-color: #5D4037; color: white; border: 1px solid white; }}
-        .stTabs [data-baseweb="tab-list"] {{ gap: 8px; }}
-        .stTabs [data-baseweb="tab"] {{
-            background-color: #f4ece1; border-radius: 5px 5px 0px 0px; color: #5D4037; padding: 8px 16px;
-        }}
-        .stTabs [aria-selected="true"] {{ background-color: #8D6E63 !important; color: white !important; }}
         [data-testid="stMetricValue"] {{ font-size: 24px; color: #5D4037; }}
         </style>
         <img src="{logo_html}" class="logo-esquina">
@@ -101,7 +96,7 @@ def obtener_proximo_recibo(conn):
     max_rec = 20000
     for hoja in ["EGRESOS", "OTROS_EGRESOS"]:
         try:
-            df = conn.read(worksheet=hoja, ttl="10m")
+            df = conn.read(worksheet=hoja, ttl="5m")
             if df is not None and not df.empty and "Nro_Recibo" in df.columns:
                 max_val = pd.to_numeric(df["Nro_Recibo"], errors='coerce').max()
                 if pd.notna(max_val) and max_val > max_rec:
@@ -199,203 +194,209 @@ if login():
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", 
              "Red de Niños", "Primicias", "Pacto", "Venta de Divisas", "Escuela de Formacion", "Encuentro"]
-    
     REDES_EXENTAS = ["Primicias", "Pacto", "Venta de Divisas", "Escuela de Formacion", "Encuentro"]
     METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
     rol = st.session_state.usuario_actual
     
+    # NAVEGACIÓN LATERAL (SIDEBAR) - LA SOLUCIÓN AL ERROR 429
+    st.sidebar.image("logo.png", use_container_width=True) if get_base64_of_bin_file('logo.png') else None
+    st.sidebar.markdown(f"<h3 style='text-align: center; color: #5D4037;'>{rol.capitalize()}</h3>", unsafe_allow_html=True)
+    
     if rol in ["admin", "tesoreria"]:
-        titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "💵 CAJA DIVISAS", "⚙️ CONFIG"]
-        idx_inicio, idx_ingresos, idx_egresos, idx_otros, idx_informes, idx_caja, idx_divisas, idx_config = 0, 1, 2, 3, 4, 5, 6, 7
+        opciones = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA (Bs)", "💵 CAJA DIVISAS", "⚙️ CONFIG"]
     else:
-        titulos = ["🏠 INICIO", "📊 INFORMES", "🏧 CAJA", "💵 CAJA DIVISAS"]
-        idx_inicio, idx_informes, idx_caja, idx_divisas = 0, 1, 2, 3
+        opciones = ["🏠 INICIO", "📊 INFORMES", "🏧 CAJA (Bs)", "💵 CAJA DIVISAS"]
         
-    tabs = st.tabs(titulos)
+    menu = st.sidebar.radio("Menú Principal", opciones)
+    
+    if st.sidebar.button("🚪 Cerrar Sesión"):
+        st.session_state.autenticado = False
+        st.rerun()
 
-    # --- INICIO ---
-    with tabs[idx_inicio]:
-        st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
-        c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
-        with c_i2:
-            try: st.image("logo.png", use_container_width=True)
-            except: st.info("Iglesia Cristiana Luz y Vida")
-            st.markdown("<h1 style='text-align: center;'>Iglesia Cristiana Luz y Vida</h1>", unsafe_allow_html=True)
-        if st.sidebar.button("Cerrar Sesión"):
-            st.session_state.autenticado = False
-            st.rerun()
+    # --- PANTALLAS SEGÚN SELECCIÓN DEL MENÚ ---
+    
+    if menu == "🏠 INICIO":
+        st.markdown("<h1 style='text-align: center;'>Iglesia Cristiana Luz y Vida</h1>", unsafe_allow_html=True)
+        st.info("👈 Selecciona una opción en el menú lateral para comenzar.")
 
-    # --- MÓDULOS DE CARGA (SOLO ADMIN/TESORERÍA) ---
-    if rol in ["admin", "tesoreria"]:
-        
-        # --- PESTAÑA INGRESOS ---
-        with tabs[idx_ingresos]:
-            st.subheader("📥 Cargar Nuevo Registro")
-            if "key_ing" not in st.session_state: st.session_state.key_ing = 0
-            with st.container(border=True):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    f_rec = st.date_input("Fecha Recaudación", date.today(), key="ing_fecha")
-                    red_sel = st.selectbox("Red / Origen", REDES, key="ing_red")
-                    tipo_sel = st.radio("Clasificación", ["Ofrenda", "Diezmo"], key="ing_tipo", horizontal=True)
-                with col2:
-                    met_sel = st.selectbox("Método de Pago", METODOS, key="ing_metodo")
-                    monto_in = st.number_input("Monto Recibido", min_value=0.0, step=0.01, key=f"ing_monto_{st.session_state.key_ing}")
-                    tasa_v = 1.0; ref_v = ""; banco_v = ""
-                    if met_sel == "USD en Efectivo":
-                        tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="ing_tasa")
-                        f_op_v = str(f_rec)
-                    elif met_sel in ["Transferencia / PM", "Punto"]:
-                        banco_v = st.text_input("Banco", key=f"ing_banco_{st.session_state.key_ing}") if met_sel == "Transferencia / PM" else "Punto"
-                        ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key=f"ing_ref_{st.session_state.key_ing}")
-                        f_op_v = str(st.date_input("Fecha Operación", date.today(), key="ing_f_op"))
-                    else: f_op_v = str(f_rec)
-                with col3:
-                    total_bs = monto_in * tasa_v if met_sel == "USD en Efectivo" else monto_in
-                    diezmo_calculado = 0.0 if red_sel in REDES_EXENTAS else float(total_bs * 0.10)
-                    st.metric("Total en Bolívares", f"{total_bs:,.2f} Bs")
-                    st.metric("10% Correspondiente", f"{diezmo_calculado:,.2f} Bs")
-                    
-                    if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
-                        try:
-                            df_actual = conn.read(worksheet="INGRESOS", ttl="10m")
-                            nuevo = pd.DataFrame([{
-                                "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
-                                "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
-                                "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
-                                "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
-                                "Diezmo_10": diezmo_calculado
-                            }])
-                            df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
-                            conn.update(worksheet="INGRESOS", data=df_update)
+    elif menu == "📥 INGRESOS" and rol in ["admin", "tesoreria"]:
+        st.header("📥 Cargar Nuevo Registro")
+        if "key_ing" not in st.session_state: st.session_state.key_ing = 0
+        with st.container(border=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                f_rec = st.date_input("Fecha Recaudación", date.today(), key="ing_fecha")
+                red_sel = st.selectbox("Red / Origen", REDES, key="ing_red")
+                tipo_sel = st.radio("Clasificación", ["Ofrenda", "Diezmo"], key="ing_tipo", horizontal=True)
+            with col2:
+                met_sel = st.selectbox("Método de Pago", METODOS, key="ing_metodo")
+                monto_in = st.number_input("Monto Recibido", min_value=0.0, step=0.01, key=f"ing_monto_{st.session_state.key_ing}")
+                tasa_v = 1.0; ref_v = ""; banco_v = ""
+                if met_sel == "USD en Efectivo":
+                    tasa_v = st.number_input("Tasa BCV", min_value=1.0, value=36.0, key="ing_tasa")
+                    f_op_v = str(f_rec)
+                elif met_sel in ["Transferencia / PM", "Punto"]:
+                    banco_v = st.text_input("Banco", key=f"ing_banco_{st.session_state.key_ing}") if met_sel == "Transferencia / PM" else "Punto"
+                    ref_v = st.text_input("Referencia (4 dígitos)", max_chars=4, key=f"ing_ref_{st.session_state.key_ing}")
+                    f_op_v = str(st.date_input("Fecha Operación", date.today(), key="ing_f_op"))
+                else: f_op_v = str(f_rec)
+            with col3:
+                total_bs = monto_in * tasa_v if met_sel == "USD en Efectivo" else monto_in
+                diezmo_calculado = 0.0 if red_sel in REDES_EXENTAS else float(total_bs * 0.10)
+                st.metric("Total en Bolívares", f"{total_bs:,.2f} Bs")
+                st.metric("10% Correspondiente", f"{diezmo_calculado:,.2f} Bs")
+                
+                if st.button("💾 GUARDAR REGISTRO", use_container_width=True):
+                    try:
+                        df_actual = conn.read(worksheet="INGRESOS", ttl="5m")
+                        nuevo = pd.DataFrame([{
+                            "Fecha": str(f_rec), "Red": red_sel, "Clasificacion": tipo_sel,
+                            "Metodo": met_sel, "Banco": banco_v, "Referencia": str(ref_v),
+                            "Fecha_Op": str(f_op_v), "Monto_Orig": float(monto_in),
+                            "Tasa": float(tasa_v), "Total_Bs": float(total_bs),
+                            "Diezmo_10": diezmo_calculado
+                        }])
+                        df_update = pd.concat([df_actual, nuevo], ignore_index=True) if df_actual is not None else nuevo
+                        conn.update(worksheet="INGRESOS", data=df_update)
+                        st.cache_data.clear()
+                        st.session_state.key_ing += 1
+                        st.success("¡Guardado exitosamente!")
+                        st.rerun()
+                    except Exception as e: st.error("Error. Espera unos segundos por límite de Google.")
+
+        st.markdown("---")
+        with st.expander("✏️ Editar o Borrar Registros de Ingresos", expanded=False):
+            if st.checkbox("Cargar tabla de edición"):
+                try:
+                    df_edit_i = conn.read(worksheet="INGRESOS", ttl="5m")
+                    if not df_edit_i.empty:
+                        df_edited_i = st.data_editor(df_edit_i, num_rows="dynamic", key="edit_ing_table")
+                        if st.button("💾 Guardar Cambios en Ingresos"):
+                            conn.update(worksheet="INGRESOS", data=df_edited_i)
                             st.cache_data.clear()
-                            st.session_state.key_ing += 1
-                            st.success("¡Guardado exitosamente!")
+                            st.success("Cambios guardados.")
                             st.rerun()
-                        except Exception as e: st.error("Error. Espera 60 segundos por límite de Google.")
+                    else: st.info("No hay datos.")
+                except: st.warning("Error de lectura.")
 
-            # OPTIMIZACIÓN DE EDICIÓN: CARGA PEREZOSA
-            st.markdown("---")
-            with st.expander("✏️ Editar o Borrar Registros de Ingresos", expanded=False):
-                if st.checkbox("Cargar tabla de edición (consume recursos)", key="chk_ed_ing"):
-                    try:
-                        df_edit_i = conn.read(worksheet="INGRESOS", ttl="10m")
-                        if not df_edit_i.empty:
-                            df_edited_i = st.data_editor(df_edit_i, num_rows="dynamic", key="edit_ing_table")
-                            if st.button("💾 Guardar Cambios en Ingresos"):
-                                conn.update(worksheet="INGRESOS", data=df_edited_i)
-                                st.cache_data.clear()
-                                st.success("Cambios guardados.")
-                                st.rerun()
-                        else: st.info("No hay datos.")
-                    except: st.warning("Error de lectura.")
-
-        # --- PESTAÑA EGRESOS FIJOS ---
-        with tabs[idx_egresos]:
-            st.header("📤 Registro de Egresos Fijos")
-            if "pdf_eg" in st.session_state:
-                st.success(f"✅ Recibo Nro: {st.session_state.nro_eg}")
-                st.download_button("🖨️ DESCARGAR PDF", data=st.session_state.pdf_eg, file_name=f"Recibo_{st.session_state.nro_eg}.pdf", key=f"dl_eg_{st.session_state.nro_eg}")
-            try:
-                df_emp = conn.read(worksheet="EMPLEADOS", ttl="10m")
-                lista_empleados = (df_emp['Nombre'] + " " + df_emp['Apellido']).tolist() if df_emp is not None else ["Sin personal"]
-            except: lista_empleados = ["Cree la pestaña EMPLEADOS"]
-            with st.container(border=True):
-                col_e1, col_e2 = st.columns(2)
-                with col_e1:
-                    nom_e = st.selectbox("Empleado", lista_empleados, key="eg_nom")
-                    monto_usd_e = st.number_input("Monto USD", min_value=0.0, key=f"eg_monto_{st.session_state.key_ing}")
-                with col_e2:
-                    tasa_e = st.number_input("Tasa", value=36.0, key="eg_tasa")
-                    total_p = monto_usd_e * tasa_e
-                    st.metric("Total Bs", f"{total_p:,.2f}")
-                if st.button("💸 REGISTRAR PAGO"):
-                    nro = obtener_proximo_recibo(conn)
-                    nuevo_eg = pd.DataFrame([{"Nro_Recibo": nro, "Fecha": str(date.today()), "Empleado_Beneficiario": nom_e, "Total_Bs": total_p, "Observaciones": "Pago Nómina"}])
-                    df_eg_act = conn.read(worksheet="EGRESOS", ttl="10m")
-                    conn.update(worksheet="EGRESOS", data=pd.concat([df_eg_act, nuevo_eg]))
-                    st.session_state.pdf_eg = generar_recibo_pdf(nro, total_p, str(date.today()), f"Nomina: {nom_e}")
-                    st.session_state.nro_eg = nro
-                    st.cache_data.clear()
-                    st.rerun()
-
-            st.markdown("---")
-            with st.expander("✏️ Editar o Borrar Egresos Fijos", expanded=False):
-                if st.checkbox("Cargar tabla de edición", key="chk_ed_eg"):
-                    try:
-                        df_edit_ef = conn.read(worksheet="EGRESOS", ttl="10m")
-                        if not df_edit_ef.empty:
-                            df_edited_ef = st.data_editor(df_edit_ef, num_rows="dynamic", key="edit_eg_table")
-                            if st.button("💾 Guardar Cambios"):
-                                conn.update(worksheet="EGRESOS", data=df_edited_ef)
-                                st.cache_data.clear()
-                                st.success("Guardado.")
-                                st.rerun()
-                    except: pass
-
-        # --- PESTAÑA OTROS EGRESOS ---
-        with tabs[idx_otros]:
-            st.header("🛠️ Otros Egresos")
-            try:
-                df_cat = conn.read(worksheet="CAT_GASTOS", ttl="10m")
-                lista_gastos = df_cat["Tipo_Gasto"].tolist() if df_cat is not None else ["General"]
-            except: lista_gastos = ["General"]
-            with st.container(border=True):
-                col1, col2 = st.columns(2)
-                with col1:
-                    desc_oe = st.selectbox("Tipo de Gasto", lista_gastos)
-                    fecha_oe = st.date_input("Fecha", date.today(), key="oe_f")
-                with col2:
-                    monto_oe = st.number_input("Monto Bs", min_value=0.0, key="oe_m")
-                    obs_oe = st.text_area("Observaciones", key="oe_o")
-                if st.button("🔧 REGISTRAR GASTO"):
-                    nro_oe = obtener_proximo_recibo(conn)
-                    nuevo_oe = pd.DataFrame([{"Nro_Recibo": nro_oe, "Descripcion": desc_oe, "Fecha": str(fecha_oe), "Monto": monto_oe, "Observaciones": obs_oe}])
-                    df_oe_act = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
-                    conn.update(worksheet="OTROS_EGRESOS", data=pd.concat([df_oe_act, nuevo_oe]))
-                    st.success("Gasto registrado")
-                    st.cache_data.clear()
-                    st.rerun()
-
-            st.markdown("---")
-            with st.expander("✏️ Editar o Borrar Otros Egresos", expanded=False):
-                if st.checkbox("Cargar tabla de edición", key="chk_ed_oe"):
-                    try:
-                        df_edit_oe = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
-                        if not df_edit_oe.empty:
-                            df_edited_oe = st.data_editor(df_edit_oe, num_rows="dynamic", key="edit_oe_table")
-                            if st.button("💾 Guardar Cambios"):
-                                conn.update(worksheet="OTROS_EGRESOS", data=df_edited_oe)
-                                st.cache_data.clear()
-                                st.success("Guardado.")
-                                st.rerun()
-                    except: pass
-
-    # --- INFORMES (TODOS LOS ROLES) ---
-    with tabs[idx_informes]:
-        st.header("📊 Reportes")
-        f_ini = st.date_input("Desde", date.today().replace(day=1), key="inf_desde")
-        f_fin = st.date_input("Hasta", date.today(), key="inf_hasta")
+    elif menu == "📤 EGRESOS FIJOS" and rol in ["admin", "tesoreria"]:
+        st.header("📤 Registro de Egresos Fijos")
+        if "pdf_eg" in st.session_state:
+            st.success(f"✅ Recibo Nro: {st.session_state.nro_eg}")
+            st.download_button("🖨️ DESCARGAR PDF", data=st.session_state.pdf_eg, file_name=f"Recibo_{st.session_state.nro_eg}.pdf")
         try:
-            df_f = conn.read(worksheet="EGRESOS", ttl="10m")
-            df_o = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
+            df_emp = conn.read(worksheet="EMPLEADOS", ttl="5m")
+            lista_empleados = (df_emp['Nombre'] + " " + df_emp['Apellido']).tolist() if df_emp is not None else ["Sin personal"]
+        except: lista_empleados = ["Cree la pestaña EMPLEADOS"]
+        
+        with st.container(border=True):
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                nom_e = st.selectbox("Empleado", lista_empleados)
+                monto_usd_e = st.number_input("Monto USD", min_value=0.0)
+            with col_e2:
+                tasa_e = st.number_input("Tasa", value=36.0)
+                total_p = monto_usd_e * tasa_e
+                st.metric("Total Bs", f"{total_p:,.2f}")
+            if st.button("💸 REGISTRAR PAGO"):
+                nro = obtener_proximo_recibo(conn)
+                nuevo_eg = pd.DataFrame([{"Nro_Recibo": nro, "Fecha": str(date.today()), "Empleado_Beneficiario": nom_e, "Total_Bs": total_p, "Observaciones": "Pago Nómina"}])
+                df_eg_act = conn.read(worksheet="EGRESOS", ttl="5m")
+                conn.update(worksheet="EGRESOS", data=pd.concat([df_eg_act, nuevo_eg]))
+                st.session_state.pdf_eg = generar_recibo_pdf(nro, total_p, str(date.today()), f"Nomina: {nom_e}")
+                st.session_state.nro_eg = nro
+                st.cache_data.clear()
+                st.rerun()
+
+        st.markdown("---")
+        with st.expander("✏️ Editar o Borrar Egresos Fijos", expanded=False):
+            if st.checkbox("Cargar tabla de edición"):
+                try:
+                    df_edit_ef = conn.read(worksheet="EGRESOS", ttl="5m")
+                    if not df_edit_ef.empty:
+                        df_edited_ef = st.data_editor(df_edit_ef, num_rows="dynamic")
+                        if st.button("💾 Guardar Cambios"):
+                            conn.update(worksheet="EGRESOS", data=df_edited_ef)
+                            st.cache_data.clear()
+                            st.success("Guardado.")
+                            st.rerun()
+                except: pass
+
+    elif menu == "🛠️ OTROS EGRESOS" and rol in ["admin", "tesoreria"]:
+        st.header("🛠️ Otros Egresos")
+        try:
+            df_cat = conn.read(worksheet="CAT_GASTOS", ttl="5m")
+            lista_gastos = df_cat["Tipo_Gasto"].tolist() if df_cat is not None else ["General"]
+        except: lista_gastos = ["General"]
+        with st.container(border=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                desc_oe = st.selectbox("Tipo de Gasto", lista_gastos)
+                fecha_oe = st.date_input("Fecha", date.today())
+            with col2:
+                monto_oe = st.number_input("Monto Bs", min_value=0.0)
+                obs_oe = st.text_area("Observaciones")
+            if st.button("🔧 REGISTRAR GASTO"):
+                nro_oe = obtener_proximo_recibo(conn)
+                nuevo_oe = pd.DataFrame([{"Nro_Recibo": nro_oe, "Descripcion": desc_oe, "Fecha": str(fecha_oe), "Monto": monto_oe, "Observaciones": obs_oe}])
+                df_oe_act = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
+                conn.update(worksheet="OTROS_EGRESOS", data=pd.concat([df_oe_act, nuevo_oe]))
+                st.success("Gasto registrado")
+                st.cache_data.clear()
+                st.rerun()
+
+        st.markdown("---")
+        with st.expander("✏️ Editar o Borrar Otros Egresos", expanded=False):
+            if st.checkbox("Cargar tabla de edición"):
+                try:
+                    df_edit_oe = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
+                    if not df_edit_oe.empty:
+                        df_edited_oe = st.data_editor(df_edit_oe, num_rows="dynamic")
+                        if st.button("💾 Guardar Cambios"):
+                            conn.update(worksheet="OTROS_EGRESOS", data=df_edited_oe)
+                            st.cache_data.clear()
+                            st.success("Guardado.")
+                            st.rerun()
+                except: pass
+
+    elif menu == "📊 INFORMES":
+        st.header("📊 Reportes")
+        f_ini = st.date_input("Desde", date.today().replace(day=1))
+        f_fin = st.date_input("Hasta", date.today())
+        try:
+            df_f = conn.read(worksheet="EGRESOS", ttl="5m")
+            df_o = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
+            
+            # FILTRO DE COMAS Y TEXTO (LA SOLUCIÓN A LA PANTALLA EN BLANCO)
+            df_f['Total_Bs'] = pd.to_numeric(df_f['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+            df_o['Monto'] = pd.to_numeric(df_o['Monto'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+            
             df_f['Fecha'] = pd.to_datetime(df_f['Fecha']).dt.date
             df_o['Fecha'] = pd.to_datetime(df_o['Fecha']).dt.date
+            
             tf = df_f[(df_f['Fecha'] >= f_ini) & (df_f['Fecha'] <= f_fin)]['Total_Bs'].sum()
             to = df_o[(df_o['Fecha'] >= f_ini) & (df_o['Fecha'] <= f_fin)]['Monto'].sum()
-            if (tf+to) > 0:
+            
+            if (tf + to) > 0:
                 fig_e = px.pie(values=[tf, to], names=["Fijos (Nómina)", "Otros (Gastos)"], hole=0.4, title="Comparativa de Egresos")
                 st.plotly_chart(fig_e)
-        except: st.info("No hay datos para graficar.")
+            else:
+                st.info("No hay egresos registrados en este rango de fechas para graficar.")
+        except Exception as e: 
+            st.error(f"Error cargando los datos. Espera un momento. ({e})")
 
-    # --- CAJA EN BOLÍVARES (TODOS LOS ROLES) ---
-    with tabs[idx_caja]:
+    elif menu == "🏧 CAJA (Bs)":
         st.header("🏧 Estado de Caja (Bs)")
         try:
-            df_i = conn.read(worksheet="INGRESOS", ttl="10m")
-            df_ef = conn.read(worksheet="EGRESOS", ttl="10m")
-            df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
+            df_i = conn.read(worksheet="INGRESOS", ttl="5m")
+            df_ef = conn.read(worksheet="EGRESOS", ttl="5m")
+            df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
+            
+            # Asegurar que todos los montos sean números correctamente (Filtro de comas)
+            df_i['Total_Bs'] = pd.to_numeric(df_i['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+            df_ef['Total_Bs'] = pd.to_numeric(df_ef['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+            df_eo['Monto'] = pd.to_numeric(df_eo['Monto'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             
             df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
             df_i_std['Salida'] = 0.0
@@ -409,8 +410,8 @@ if login():
             libro['Saldo'] = libro['Entrada'].cumsum() - libro['Salida'].cumsum()
             
             col_c1, col_c2 = st.columns(2)
-            fd = col_c1.date_input("Desde", date.today().replace(day=1), key="caja_fd")
-            fh = col_c2.date_input("Hasta", date.today(), key="caja_fh")
+            fd = col_c1.date_input("Desde", date.today().replace(day=1))
+            fh = col_c2.date_input("Hasta", date.today())
             df_caja_f = libro[(libro['Fecha'] >= fd) & (libro['Fecha'] <= fh)]
             
             m1, m2, m3 = st.columns(3)
@@ -424,13 +425,10 @@ if login():
                 st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
         except Exception as e: st.error("Error al cargar la caja.")
 
-    # --- CAJA DIVISAS ---
-    with tabs[idx_divisas]:
+    elif menu == "💵 CAJA DIVISAS":
         st.header("💵 Control de Caja en Divisas")
-        st.write("Vista de saldos y movimientos en moneda extranjera.")
-        
         try:
-            df_div = conn.read(worksheet="CAJA_DIVISAS", ttl="10m")
+            df_div = conn.read(worksheet="CAJA_DIVISAS", ttl="5m")
             if df_div is None or df_div.empty:
                 df_div = pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
         except:
@@ -442,12 +440,13 @@ if login():
         for i, moneda in enumerate(monedas):
             with tabs_divisas[i]:
                 st.subheader(f"Movimientos - {moneda}")
-                
                 df_m = df_div[df_div["Moneda"] == moneda].copy() if not df_div.empty else pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
-                df_m['Ingreso'] = pd.to_numeric(df_m['Ingreso'], errors='coerce').fillna(0)
-                df_m['Egreso'] = pd.to_numeric(df_m['Egreso'], errors='coerce').fillna(0)
-                saldo_actual = df_m['Ingreso'].sum() - df_m['Egreso'].sum()
                 
+                # Filtro de comas para divisas
+                df_m['Ingreso'] = pd.to_numeric(df_m['Ingreso'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                df_m['Egreso'] = pd.to_numeric(df_m['Egreso'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                
+                saldo_actual = df_m['Ingreso'].sum() - df_m['Egreso'].sum()
                 st.metric(f"SALDO NETO ({moneda})", f"{saldo_actual:,.2f}")
                 
                 if rol in ["admin", "tesoreria"]:
@@ -456,13 +455,13 @@ if login():
                         with c1:
                             f_div = st.date_input("Fecha", date.today(), key=f"f_div_{i}")
                         with c2:
-                            desc_div = st.text_input("Descripción", placeholder="Motivo de la operación...", key=f"desc_div_{i}")
+                            desc_div = st.text_input("Descripción", key=f"desc_div_{i}")
                         with c3:
                             tipo_div = st.selectbox("Tipo de Operación", ["Ingreso", "Egreso"], key=f"tipo_div_{i}")
                         with c4:
                             monto_div = st.number_input("Monto", min_value=0.01, step=0.01, key=f"monto_div_{i}")
                             
-                        if st.button(f"💾 Guardar Movimiento en {moneda}", type="primary", key=f"btn_div_{i}"):
+                        if st.button(f"💾 Guardar Movimiento en {moneda}", type="primary"):
                             if desc_div:
                                 ingreso_val = monto_div if tipo_div == "Ingreso" else 0.0
                                 egreso_val = monto_div if tipo_div == "Egreso" else 0.0
@@ -491,49 +490,45 @@ if login():
         if rol in ["admin", "tesoreria"]:
             st.markdown("---")
             with st.expander("✏️ Editar o Borrar Registros de Divisas", expanded=False):
-                if st.checkbox("Cargar tabla de edición (Divisas)", key="chk_ed_div"):
+                if st.checkbox("Cargar tabla de edición (Divisas)"):
                     if not df_div.empty:
-                        df_edited_div = st.data_editor(df_div, num_rows="dynamic", key="edit_div_table", use_container_width=True)
+                        df_edited_div = st.data_editor(df_div, num_rows="dynamic", use_container_width=True)
                         if st.button("💾 Guardar Cambios en Divisas"):
                             conn.update(worksheet="CAJA_DIVISAS", data=df_edited_div)
                             st.cache_data.clear()
                             st.success("Cambios guardados.")
                             st.rerun()
-                    else:
-                        st.info("No hay datos de divisas para editar.")
 
-    # --- CONFIGURACIÓN (SOLO ADMIN/TESORERÍA) ---
-    if rol in ["admin", "tesoreria"]:
-        with tabs[idx_config]:
-            st.header("⚙️ Configuración")
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Personal")
-                try:
-                    df_p = conn.read(worksheet="EMPLEADOS", ttl="10m")
-                    df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
-                    if st.button("Guardar Personal"):
-                        conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
-                        st.cache_data.clear()
-                        st.success("Guardado")
-                        st.rerun()
-                except: st.error("Error al leer 'EMPLEADOS'.")
-
-            with c2:
-                st.subheader("Catálogo de Gastos")
-                try: 
-                    df_g = conn.read(worksheet="CAT_GASTOS", ttl="10m")
-                    if df_g is None or df_g.empty:
-                        df_g = pd.DataFrame(columns=["Tipo_Gasto"])
-                    df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
-                except: 
-                    df_g = pd.DataFrame(columns=["Tipo_Gasto"])
-                
-                df_ge = st.data_editor(df_g, num_rows="dynamic", key="ed_gast", use_container_width=True)
-                
-                if st.button("Guardar Catálogo"):
-                    df_guardar = df_ge[df_ge["Tipo_Gasto"].astype(str).str.strip() != ""]
-                    conn.update(worksheet="CAT_GASTOS", data=df_guardar)
+    elif menu == "⚙️ CONFIG" and rol in ["admin", "tesoreria"]:
+        st.header("⚙️ Configuración")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("Personal")
+            try:
+                df_p = conn.read(worksheet="EMPLEADOS", ttl="5m")
+                df_pe = st.data_editor(df_p, num_rows="dynamic")
+                if st.button("Guardar Personal"):
+                    conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
                     st.cache_data.clear()
-                    st.success("¡Catálogo actualizado!")
+                    st.success("Guardado")
                     st.rerun()
+            except: st.error("Error al leer 'EMPLEADOS'.")
+
+        with c2:
+            st.subheader("Catálogo de Gastos")
+            try: 
+                df_g = conn.read(worksheet="CAT_GASTOS", ttl="5m")
+                if df_g is None or df_g.empty:
+                    df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+                df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
+            except: 
+                df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+            
+            df_ge = st.data_editor(df_g, num_rows="dynamic", use_container_width=True)
+            
+            if st.button("Guardar Catálogo"):
+                df_guardar = df_ge[df_ge["Tipo_Gasto"].astype(str).str.strip() != ""]
+                conn.update(worksheet="CAT_GASTOS", data=df_guardar)
+                st.cache_data.clear()
+                st.success("¡Catálogo actualizado!")
+                st.rerun()
