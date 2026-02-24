@@ -185,7 +185,6 @@ def generar_pdf_caja(df, f_ini, f_fin, t_ing, t_egr, saldo_n):
         pdf.cell(30, 7, f"{row['Saldo']:,.2f}", 1, 1, 'R')
     return pdf.output(dest="S").encode("latin-1")
 
-# NUEVA FUNCIÓN PARA EL REPORTE DE APORTES E INGRESOS
 def generar_pdf_informes(df_agrupado, f_ini, f_fin, t_ing, t_diezmo, apostol, presbiterio):
     pdf = FPDF()
     pdf.add_page()
@@ -197,7 +196,6 @@ def generar_pdf_informes(df_agrupado, f_ini, f_fin, t_ing, t_diezmo, apostol, pr
     pdf.cell(190, 7, txt=f"Desde: {f_ini} hasta: {f_fin}", ln=True, align='C')
     pdf.ln(5)
 
-    # Cuadros de Resumen Institucional
     pdf.set_fill_color(240, 240, 240)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(95, 8, f"TOTAL GENERAL INGRESOS: {t_ing:,.2f} Bs", 1, 0, 'C', True)
@@ -206,7 +204,6 @@ def generar_pdf_informes(df_agrupado, f_ini, f_fin, t_ing, t_diezmo, apostol, pr
     pdf.cell(95, 8, f"APORTE PRESBITERIO (Sin Zabulom): {presbiterio:,.2f} Bs", 1, 1, 'C', True)
     pdf.ln(8)
 
-    # Cabecera de la tabla de detalles
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(90, 8, "Red / Forma de Ingreso", 1, 0, 'C')
     pdf.cell(50, 8, "Monto Recaudado (Bs)", 1, 0, 'C')
@@ -221,13 +218,70 @@ def generar_pdf_informes(df_agrupado, f_ini, f_fin, t_ing, t_diezmo, apostol, pr
         
     return pdf.output(dest="S").encode("latin-1")
 
+# NUEVA FUNCIÓN PARA EL REPORTE GLOBAL DE EGRESOS
+def generar_pdf_egresos_global(df_f, df_o, f_ini, f_fin):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(190, 8, txt="REPORTE GLOBAL DE EGRESOS", ln=True, align='C')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(190, 7, txt=f"Desde: {f_ini} hasta: {f_fin}", ln=True, align='C')
+    pdf.ln(5)
+
+    t_fijos = df_f['Total_Bs'].sum() if not df_f.empty else 0
+    t_otros = df_o['Monto'].sum() if not df_o.empty else 0
+    t_general = t_fijos + t_otros
+
+    # Cuadro Resumen de Egresos
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(63, 8, f"EGRESOS FIJOS: {t_fijos:,.2f} Bs", 1, 0, 'C', True)
+    pdf.cell(63, 8, f"OTROS GASTOS: {t_otros:,.2f} Bs", 1, 0, 'C', True)
+    pdf.cell(64, 8, f"TOTAL EGRESOS: {t_general:,.2f} Bs", 1, 1, 'C', True)
+    pdf.ln(5)
+
+    # Preparar datos combinados
+    df1 = df_f[['Fecha', 'Empleado_Beneficiario', 'Total_Bs', 'Observaciones']].rename(columns={'Empleado_Beneficiario': 'Concepto', 'Total_Bs': 'Monto'}).copy() if not df_f.empty else pd.DataFrame(columns=['Fecha', 'Concepto', 'Monto', 'Observaciones'])
+    df1['Tipo'] = 'Fijo'
+
+    df2 = df_o[['Fecha', 'Descripcion', 'Monto', 'Observaciones']].rename(columns={'Descripcion': 'Concepto'}).copy() if not df_o.empty else pd.DataFrame(columns=['Fecha', 'Concepto', 'Monto', 'Observaciones'])
+    df2['Tipo'] = 'Otro'
+
+    df_comb = pd.concat([df1, df2]).sort_values('Fecha')
+
+    # Cabecera de la tabla
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(20, 8, "Fecha", 1, 0, 'C')
+    pdf.cell(15, 8, "Tipo", 1, 0, 'C')
+    pdf.cell(55, 8, "Concepto / Benef", 1, 0, 'C')
+    pdf.cell(25, 8, "Monto (Bs)", 1, 0, 'C')
+    pdf.cell(75, 8, "Observaciones", 1, 1, 'C')
+
+    # Filas de la tabla
+    pdf.set_font("Arial", '', 8)
+    for _, row in df_comb.iterrows():
+        f_str = str(row['Fecha'])
+        t_str = str(row['Tipo'])
+        c_str = str(row['Concepto'])[:30].encode('latin-1', 'replace').decode('latin-1')
+        m_str = f"{float(row['Monto']):,.2f}"
+        o_str = str(row['Observaciones'])[:45].encode('latin-1', 'replace').decode('latin-1')
+        
+        pdf.cell(20, 7, f_str, 1, 0, 'C')
+        pdf.cell(15, 7, t_str, 1, 0, 'C')
+        pdf.cell(55, 7, c_str, 1, 0, 'L')
+        pdf.cell(25, 7, m_str, 1, 0, 'R')
+        pdf.cell(75, 7, o_str, 1, 1, 'L')
+
+    return pdf.output(dest="S").encode("latin-1")
+
 
 # --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
     conn = st.connection("my_database", type=GSheetsConnection)
 
-    # LISTA DE REDES EXACTA: Las primeras 16 se usan para el cálculo de aportes
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", 
@@ -403,7 +457,6 @@ if login():
     elif menu == "📊 INFORMES":
         st.header("📊 Informes de Aportes y Rendición")
         
-        # FILTROS DINÁMICOS
         st.subheader("Filtros de Búsqueda")
         c1, c2 = st.columns(2)
         f_ini = c1.date_input("Fecha Desde", date.today().replace(day=1))
@@ -413,19 +466,13 @@ if login():
         
         try:
             df_i = conn.read(worksheet="INGRESOS", ttl="5m")
-            
-            # Limpiar comas para cálculos matemáticos
             df_i['Total_Bs'] = pd.to_numeric(df_i['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             df_i['Diezmo_10'] = pd.to_numeric(df_i['Diezmo_10'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             df_i['Fecha'] = pd.to_datetime(df_i['Fecha']).dt.date
             
-            # Aplicar Filtros de Fecha y Red
             df_filtrado = df_i[(df_i['Fecha'] >= f_ini) & (df_i['Fecha'] <= f_fin) & (df_i['Red'].isin(redes_seleccionadas))]
             
-            # LÓGICA DE APORTES INSTITUCIONALES
             primeras_16_redes = REDES[:16]
-            
-            # Aislar datos solo de las primeras 16 para el cálculo del Apostol y Presbiterio
             df_16 = df_filtrado[df_filtrado['Red'].isin(primeras_16_redes)]
             
             apostol_monto = df_16['Diezmo_10'].sum()
@@ -434,35 +481,29 @@ if login():
             total_general_ingresos = df_filtrado['Total_Bs'].sum()
             total_diezmos = df_16['Diezmo_10'].sum() 
             
-            # MOSTRAR RESULTADOS EN PANTALLA
             st.markdown("---")
-            st.subheader("Resumen General")
+            st.subheader("Resumen General de Ingresos")
             m1, m2 = st.columns(2)
-            m1.metric("Total General Ingresos", f"{total_general_ingresos:,.2f} Bs", "Todas las formas de ingreso")
-            m2.metric("Total Diezmos (10%)", f"{total_diezmos:,.2f} Bs", "Calculado sobre las 16 primeras")
+            m1.metric("Total General Ingresos", f"{total_general_ingresos:,.2f} Bs")
+            m2.metric("Total Diezmos (10%)", f"{total_diezmos:,.2f} Bs")
             
             st.subheader("Aportes Institucionales")
             m3, m4 = st.columns(2)
             m3.metric("Apóstol", f"{apostol_monto:,.2f} Bs")
             m4.metric("Presbiterio (Sin Zabulom)", f"{presbiterio_monto:,.2f} Bs")
             
-            # TABLA DETALLADA AGRUPADA
-            st.markdown("---")
-            st.write("Detalle agrupado por forma de ingreso:")
             df_agrupado = df_filtrado.groupby('Red')[['Total_Bs', 'Diezmo_10']].sum().reset_index()
-            st.dataframe(df_agrupado, use_container_width=True)
             
-            # BOTÓN PDF
-            if st.button("📄 GENERAR REPORTE EN PDF", type="primary"):
+            if st.button("📄 GENERAR REPORTE DE INGRESOS EN PDF", type="primary"):
                 pdf_inf = generar_pdf_informes(df_agrupado, f_ini, f_fin, total_general_ingresos, total_diezmos, apostol_monto, presbiterio_monto)
-                st.download_button("🖨️ Haz clic aquí para descargar el Reporte", data=pdf_inf, file_name=f"Reporte_Ingresos_{f_fin}.pdf")
+                st.download_button("🖨️ Descargar Reporte de Ingresos", data=pdf_inf, file_name=f"Reporte_Ingresos_{f_fin}.pdf")
             
         except Exception as e: 
             st.error(f"Error cargando los datos. Espera un momento. ({e})")
             
-        # EXTRA: Mantenemos la torta de egresos más abajo por si la necesitan
+        # --- SECCIÓN DE EGRESOS GLOBALES ---
         st.markdown("---")
-        with st.expander("Ver Resumen de Egresos (Gráfico circular)", expanded=False):
+        with st.expander("Ver Resumen Global de Egresos (Gráfico circular y PDF)", expanded=False):
             try:
                 df_f = conn.read(worksheet="EGRESOS", ttl="5m")
                 df_o = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
@@ -470,12 +511,25 @@ if login():
                 df_o['Monto'] = pd.to_numeric(df_o['Monto'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
                 df_f['Fecha'] = pd.to_datetime(df_f['Fecha']).dt.date
                 df_o['Fecha'] = pd.to_datetime(df_o['Fecha']).dt.date
-                tf = df_f[(df_f['Fecha'] >= f_ini) & (df_f['Fecha'] <= f_fin)]['Total_Bs'].sum()
-                to = df_o[(df_o['Fecha'] >= f_ini) & (df_o['Fecha'] <= f_fin)]['Monto'].sum()
+                
+                # Filtrar egresos por las fechas seleccionadas arriba
+                df_f_filt = df_f[(df_f['Fecha'] >= f_ini) & (df_f['Fecha'] <= f_fin)]
+                df_o_filt = df_o[(df_o['Fecha'] >= f_ini) & (df_o['Fecha'] <= f_fin)]
+                
+                tf = df_f_filt['Total_Bs'].sum()
+                to = df_o_filt['Monto'].sum()
+                
                 if (tf + to) > 0:
                     fig_e = px.pie(values=[tf, to], names=["Fijos (Nómina)", "Otros (Gastos)"], hole=0.4)
                     st.plotly_chart(fig_e)
-            except: pass
+                    
+                    # BOTÓN PDF EGRESOS GLOBAL
+                    pdf_egr_glob = generar_pdf_egresos_global(df_f_filt, df_o_filt, f_ini, f_fin)
+                    st.download_button("🖨️ GENERAR REPORTE GLOBAL DE EGRESOS EN PDF", data=pdf_egr_glob, file_name=f"Reporte_Global_Egresos_{f_fin}.pdf", type="primary")
+                else:
+                    st.info("No hay egresos registrados en este rango de fechas.")
+            except Exception as e:
+                st.warning("Aún no hay suficientes datos de egresos para generar este reporte.")
 
     elif menu == "🏧 CAJA (Bs)":
         st.header("🏧 Estado de Caja (Bs)")
