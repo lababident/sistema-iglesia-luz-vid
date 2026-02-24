@@ -231,9 +231,9 @@ if login():
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", 
-             "Red de Niños", "Primicias", "Pacto"]
+             "Red de Niños", "Primicias", "Pacto", "Venta de Divisas", "Escuela de Formacion", "Encuentro"]
     
-    REDES_EXENTAS = ["Primicias", "Pacto"]
+    REDES_EXENTAS = ["Primicias", "Pacto", "Venta de Divisas", "Escuela de Formacion", "Encuentro"]
     METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
     rol = st.session_state.usuario_actual
@@ -432,4 +432,5 @@ if login():
                     st.cache_data.clear()
                     st.success("¡Catálogo actualizado!")
                     st.rerun()
+
 
