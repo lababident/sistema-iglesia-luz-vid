@@ -199,8 +199,10 @@ if login():
 
     rol = st.session_state.usuario_actual
     
-    # NAVEGACIÓN LATERAL (SIDEBAR) - LA SOLUCIÓN AL ERROR 429
-    st.sidebar.image("logo.png", use_container_width=True) if get_base64_of_bin_file('logo.png') else None
+    # NAVEGACIÓN LATERAL (SIDEBAR) - CORRECCIÓN DEL TEXTO DE STREAMLIT
+    if get_base64_of_bin_file('logo.png'):
+        st.sidebar.image("logo.png", use_container_width=True)
+        
     st.sidebar.markdown(f"<h3 style='text-align: center; color: #5D4037;'>{rol.capitalize()}</h3>", unsafe_allow_html=True)
     
     if rol in ["admin", "tesoreria"]:
@@ -368,7 +370,6 @@ if login():
             df_f = conn.read(worksheet="EGRESOS", ttl="5m")
             df_o = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
             
-            # FILTRO DE COMAS Y TEXTO (LA SOLUCIÓN A LA PANTALLA EN BLANCO)
             df_f['Total_Bs'] = pd.to_numeric(df_f['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             df_o['Monto'] = pd.to_numeric(df_o['Monto'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             
@@ -393,7 +394,6 @@ if login():
             df_ef = conn.read(worksheet="EGRESOS", ttl="5m")
             df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="5m")
             
-            # Asegurar que todos los montos sean números correctamente (Filtro de comas)
             df_i['Total_Bs'] = pd.to_numeric(df_i['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             df_ef['Total_Bs'] = pd.to_numeric(df_ef['Total_Bs'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             df_eo['Monto'] = pd.to_numeric(df_eo['Monto'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
@@ -442,7 +442,6 @@ if login():
                 st.subheader(f"Movimientos - {moneda}")
                 df_m = df_div[df_div["Moneda"] == moneda].copy() if not df_div.empty else pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
                 
-                # Filtro de comas para divisas
                 df_m['Ingreso'] = pd.to_numeric(df_m['Ingreso'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
                 df_m['Egreso'] = pd.to_numeric(df_m['Egreso'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
                 
