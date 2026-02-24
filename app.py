@@ -84,6 +84,11 @@ def numero_a_letras(n):
             resto = numero % 1000
             prefijo = "mil" if miles == 1 else convertir(miles) + " mil"
             return prefijo + (" " + convertir(resto) if resto > 0 else "")
+        if numero < 1000000000:
+            millones = numero // 1000000
+            resto = numero % 1000000
+            prefijo = "un millon" if millones == 1 else convertir(millones) + " millones"
+            return prefijo + (" " + convertir(resto) if resto > 0 else "")
         return str(numero)
 
     entero = int(n)
@@ -235,7 +240,6 @@ if login():
     titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "👥 CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
     tabs = st.tabs(titulos)
 
-    # --- PESTAÑA INICIO ---
     with tabs[0]:
         st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
         c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
@@ -248,7 +252,6 @@ if login():
             st.rerun()
 
     if rol in ["admin", "tesoreria"]:
-        # --- PESTAÑA INGRESOS ---
         with tabs[1]:
             st.subheader("📥 Cargar Nuevo Registro")
             if "key_ing" not in st.session_state: st.session_state.key_ing = 0
@@ -294,18 +297,15 @@ if login():
                             st.rerun()
                         except Exception as e: st.error(f"Error: {e}")
 
-        # --- PESTAÑA EGRESOS FIJOS ---
         with tabs[2]:
             st.header("📤 Registro de Egresos Fijos")
             if "pdf_eg" in st.session_state:
                 st.success(f"✅ Recibo Nro: {st.session_state.nro_eg}")
                 st.download_button("🖨️ DESCARGAR PDF", data=st.session_state.pdf_eg, file_name=f"Recibo_{st.session_state.nro_eg}.pdf", key=f"dl_eg_{st.session_state.nro_eg}")
-            
             try:
                 df_emp = conn.read(worksheet="EMPLEADOS", ttl="5m")
                 lista_empleados = (df_emp['Nombre'] + " " + df_emp['Apellido']).tolist() if df_emp is not None else ["Sin personal"]
             except: lista_empleados = ["Cree la pestaña EMPLEADOS"]
-
             with st.container(border=True):
                 col_e1, col_e2 = st.columns(2)
                 with col_e1:
@@ -325,14 +325,12 @@ if login():
                     st.cache_data.clear()
                     st.rerun()
 
-        # --- PESTAÑA OTROS EGRESOS ---
         with tabs[3]:
             st.header("🛠️ Otros Egresos")
             try:
                 df_cat = conn.read(worksheet="CAT_GASTOS", ttl="5m")
                 lista_gastos = df_cat["Tipo_Gasto"].tolist() if df_cat is not None else ["General"]
             except: lista_gastos = ["General"]
-
             with st.container(border=True):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -350,13 +348,11 @@ if login():
                     st.cache_data.clear()
                     st.rerun()
 
-    # --- PESTAÑA INFORMES ---
     idx_inf = 4 if rol in ["admin", "tesoreria"] else 1
     with tabs[idx_inf]:
         st.header("📊 Reportes")
         f_ini = st.date_input("Desde", date.today().replace(day=1), key="inf_desde")
         f_fin = st.date_input("Hasta", date.today(), key="inf_hasta")
-        
         try:
             df_f = conn.read(worksheet="EGRESOS")
             df_o = conn.read(worksheet="OTROS_EGRESOS")
@@ -369,7 +365,6 @@ if login():
                 st.plotly_chart(fig_e)
         except: st.info("No hay datos para graficar.")
 
-    # --- PESTAÑA CAJA ---
     if rol in ["admin", "tesoreria"]:
         with tabs[5]:
             st.header("🏧 Estado de Caja")
@@ -377,53 +372,49 @@ if login():
                 df_i = conn.read(worksheet="INGRESOS", ttl="0m")
                 df_ef = conn.read(worksheet="EGRESOS", ttl="0m")
                 df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="0m")
-
-                # Estandarización para Libro Mayor
                 df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
                 df_i_std['Salida'] = 0.0
                 df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].rename(columns={'Empleado_Beneficiario':'Descripción', 'Total_Bs':'Salida'})
                 df_ef_std['Entrada'] = 0.0
                 df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].rename(columns={'Descripcion':'Descripción', 'Monto':'Salida'})
                 df_eo_std['Entrada'] = 0.0
-
                 libro = pd.concat([df_i_std, df_ef_std, df_eo_std]).sort_values('Fecha')
                 libro['Fecha'] = pd.to_datetime(libro['Fecha']).dt.date
                 libro['Saldo'] = libro['Entrada'].cumsum() - libro['Salida'].cumsum()
-
                 col_c1, col_c2 = st.columns(2)
                 fd = col_c1.date_input("Desde", date.today().replace(day=1), key="caja_fd")
                 fh = col_c2.date_input("Hasta", date.today(), key="caja_fh")
-                
                 df_caja_f = libro[(libro['Fecha'] >= fd) & (libro['Fecha'] <= fh)]
-                
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Ingresos", f"{df_caja_f['Entrada'].sum():,.2f}")
                 m2.metric("Egresos", f"{df_caja_f['Salida'].sum():,.2f}")
                 m3.metric("Saldo Final", f"{libro['Saldo'].iloc[-1] if not libro.empty else 0:,.2f}")
-
                 st.dataframe(df_caja_f, use_container_width=True)
-                
                 if st.button("📄 GENERAR PDF DE CAJA"):
                     pdf_c = generar_pdf_caja(df_caja_f, fd, fh, df_caja_f['Entrada'].sum(), df_caja_f['Salida'].sum(), libro['Saldo'].iloc[-1])
                     st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
             except Exception as e: st.error(f"Error en Caja: {e}")
 
-        st.subheader("🛠️ Catálogo de Gastos")
+        with tabs[6]:
+            st.header("⚙️ Configuración")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("Personal")
+                df_p = conn.read(worksheet="EMPLEADOS")
+                df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
+                if st.button("Guardar Personal"):
+                    conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
+                    st.success("Guardado")
+            with c2:
+                st.subheader("Catálogo de Gastos")
                 try: 
-                    # Intentamos leer la hoja
                     df_g = conn.read(worksheet="CAT_GASTOS", ttl="0m")
-                    
-                    # Si la hoja existe pero está totalmente vacía o sin la columna correcta
                     if df_g is None or df_g.empty or "Tipo_Gasto" not in df_g.columns:
                         df_g = pd.DataFrame(columns=["Tipo_Gasto"])
-                    
-                    # Forzamos a que la columna sea tratada como texto para evitar el recuadro rojo
                     df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
                 except: 
-                    # Si la pestaña ni siquiera existe en el Excel
                     df_g = pd.DataFrame(columns=["Tipo_Gasto"])
                 
-                # Usamos column_config para asegurar que el editor sepa que es TEXTO
                 df_ge = st.data_editor(
                     df_g, 
                     num_rows="dynamic", 
@@ -432,17 +423,14 @@ if login():
                     column_config={
                         "Tipo_Gasto": st.column_config.TextColumn(
                             "Tipo de Gasto",
-                            help="Escribe el nombre del gasto y presiona Enter",
                             placeholder="Ej: Limpieza, Papelería...",
                             required=True,
                         )
                     }
                 )
-                
-                if st.button("💾 Guardar Catálogo"):
-                    # Limpiamos filas vacías antes de guardar
+                if st.button("Guardar Catálogo"):
                     df_guardar = df_ge[df_ge["Tipo_Gasto"].str.strip() != ""]
                     conn.update(worksheet="CAT_GASTOS", data=df_guardar)
                     st.cache_data.clear()
-                    st.success("¡Catálogo actualizado correctamente!")
+                    st.success("¡Catálogo actualizado!")
                     st.rerun()
