@@ -101,7 +101,7 @@ def obtener_proximo_recibo(conn):
     max_rec = 20000
     for hoja in ["EGRESOS", "OTROS_EGRESOS"]:
         try:
-            df = conn.read(worksheet=hoja, ttl="0m")
+            df = conn.read(worksheet=hoja, ttl="10m")
             if df is not None and not df.empty and "Nro_Recibo" in df.columns:
                 max_val = pd.to_numeric(df["Nro_Recibo"], errors='coerce').max()
                 if pd.notna(max_val) and max_val > max_rec:
@@ -228,16 +228,20 @@ if login():
     aplicar_estetica()
     conn = st.connection("my_database", type=GSheetsConnection)
 
+    # NUEVAS REDES AGREGADAS
     REDES = ["Red de Ruben", "Red de Simeon", "Red de Levi", "Red de Juda", "Red de Neftali", 
              "Red de Efrain", "Red de Gad", "Red de Aser", "Red de Isacar", "Red de Zabulom", 
              "Red de Jose", "Red de Benjamin", "Protemplo", "Suelto General", "Pastores", 
              "Red de Niños", "Primicias", "Pacto", "Venta de Divisas", "Escuela de Formacion", "Encuentro"]
     
+    # EXENTAS DE DIEZMO
     REDES_EXENTAS = ["Primicias", "Pacto", "Venta de Divisas", "Escuela de Formacion", "Encuentro"]
     METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
     rol = st.session_state.usuario_actual
-    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "👥 CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
+    
+    # NUEVA PESTAÑA AÑADIDA: CAJA DIVISAS
+    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "💵 CAJA DIVISAS", "⚙️ CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
     tabs = st.tabs(titulos)
 
     with tabs[0]:
@@ -252,6 +256,7 @@ if login():
             st.rerun()
 
     if rol in ["admin", "tesoreria"]:
+        # --- INGRESOS ---
         with tabs[1]:
             st.subheader("📥 Cargar Nuevo Registro")
             if "key_ing" not in st.session_state: st.session_state.key_ing = 0
@@ -297,13 +302,14 @@ if login():
                             st.rerun()
                         except Exception as e: st.error(f"Error: {e}")
 
+        # --- EGRESOS FIJOS ---
         with tabs[2]:
             st.header("📤 Registro de Egresos Fijos")
             if "pdf_eg" in st.session_state:
                 st.success(f"✅ Recibo Nro: {st.session_state.nro_eg}")
                 st.download_button("🖨️ DESCARGAR PDF", data=st.session_state.pdf_eg, file_name=f"Recibo_{st.session_state.nro_eg}.pdf", key=f"dl_eg_{st.session_state.nro_eg}")
             try:
-                df_emp = conn.read(worksheet="EMPLEADOS", ttl="5m")
+                df_emp = conn.read(worksheet="EMPLEADOS", ttl="10m")
                 lista_empleados = (df_emp['Nombre'] + " " + df_emp['Apellido']).tolist() if df_emp is not None else ["Sin personal"]
             except: lista_empleados = ["Cree la pestaña EMPLEADOS"]
             with st.container(border=True):
@@ -318,17 +324,18 @@ if login():
                 if st.button("💸 REGISTRAR PAGO"):
                     nro = obtener_proximo_recibo(conn)
                     nuevo_eg = pd.DataFrame([{"Nro_Recibo": nro, "Fecha": str(date.today()), "Empleado_Beneficiario": nom_e, "Total_Bs": total_p, "Observaciones": "Pago Nómina"}])
-                    df_eg_act = conn.read(worksheet="EGRESOS")
+                    df_eg_act = conn.read(worksheet="EGRESOS", ttl="10m")
                     conn.update(worksheet="EGRESOS", data=pd.concat([df_eg_act, nuevo_eg]))
                     st.session_state.pdf_eg = generar_recibo_pdf(nro, total_p, str(date.today()), f"Nomina: {nom_e}")
                     st.session_state.nro_eg = nro
                     st.cache_data.clear()
                     st.rerun()
 
+        # --- OTROS EGRESOS ---
         with tabs[3]:
             st.header("🛠️ Otros Egresos")
             try:
-                df_cat = conn.read(worksheet="CAT_GASTOS", ttl="5m")
+                df_cat = conn.read(worksheet="CAT_GASTOS", ttl="10m")
                 lista_gastos = df_cat["Tipo_Gasto"].tolist() if df_cat is not None else ["General"]
             except: lista_gastos = ["General"]
             with st.container(border=True):
@@ -342,20 +349,21 @@ if login():
                 if st.button("🔧 REGISTRAR GASTO"):
                     nro_oe = obtener_proximo_recibo(conn)
                     nuevo_oe = pd.DataFrame([{"Nro_Recibo": nro_oe, "Descripcion": desc_oe, "Fecha": str(fecha_oe), "Monto": monto_oe, "Observaciones": obs_oe}])
-                    df_oe_act = conn.read(worksheet="OTROS_EGRESOS")
+                    df_oe_act = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
                     conn.update(worksheet="OTROS_EGRESOS", data=pd.concat([df_oe_act, nuevo_oe]))
                     st.success("Gasto registrado")
                     st.cache_data.clear()
                     st.rerun()
 
+    # --- INFORMES ---
     idx_inf = 4 if rol in ["admin", "tesoreria"] else 1
     with tabs[idx_inf]:
         st.header("📊 Reportes")
         f_ini = st.date_input("Desde", date.today().replace(day=1), key="inf_desde")
         f_fin = st.date_input("Hasta", date.today(), key="inf_hasta")
         try:
-            df_f = conn.read(worksheet="EGRESOS")
-            df_o = conn.read(worksheet="OTROS_EGRESOS")
+            df_f = conn.read(worksheet="EGRESOS", ttl="10m")
+            df_o = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
             df_f['Fecha'] = pd.to_datetime(df_f['Fecha']).dt.date
             df_o['Fecha'] = pd.to_datetime(df_o['Fecha']).dt.date
             tf = df_f[(df_f['Fecha'] >= f_ini) & (df_f['Fecha'] <= f_fin)]['Total_Bs'].sum()
@@ -366,44 +374,112 @@ if login():
         except: st.info("No hay datos para graficar.")
 
     if rol in ["admin", "tesoreria"]:
+        # --- CAJA EN BOLÍVARES ---
         with tabs[5]:
-            st.header("🏧 Estado de Caja")
+            st.header("🏧 Estado de Caja (Bs)")
             try:
-                df_i = conn.read(worksheet="INGRESOS", ttl="2m")
-                df_ef = conn.read(worksheet="EGRESOS", ttl="2m")
-                df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="2m")
+                df_i = conn.read(worksheet="INGRESOS", ttl="10m")
+                df_ef = conn.read(worksheet="EGRESOS", ttl="10m")
+                df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
+                
                 df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
                 df_i_std['Salida'] = 0.0
                 df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].rename(columns={'Empleado_Beneficiario':'Descripción', 'Total_Bs':'Salida'})
                 df_ef_std['Entrada'] = 0.0
                 df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].rename(columns={'Descripcion':'Descripción', 'Monto':'Salida'})
                 df_eo_std['Entrada'] = 0.0
+                
                 libro = pd.concat([df_i_std, df_ef_std, df_eo_std]).sort_values('Fecha')
                 libro['Fecha'] = pd.to_datetime(libro['Fecha']).dt.date
                 libro['Saldo'] = libro['Entrada'].cumsum() - libro['Salida'].cumsum()
+                
                 col_c1, col_c2 = st.columns(2)
                 fd = col_c1.date_input("Desde", date.today().replace(day=1), key="caja_fd")
                 fh = col_c2.date_input("Hasta", date.today(), key="caja_fh")
                 df_caja_f = libro[(libro['Fecha'] >= fd) & (libro['Fecha'] <= fh)]
+                
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Ingresos", f"{df_caja_f['Entrada'].sum():,.2f}")
                 m2.metric("Egresos", f"{df_caja_f['Salida'].sum():,.2f}")
                 m3.metric("Saldo Final", f"{libro['Saldo'].iloc[-1] if not libro.empty else 0:,.2f}")
+                
                 st.dataframe(df_caja_f, use_container_width=True)
                 if st.button("📄 GENERAR PDF DE CAJA"):
                     pdf_c = generar_pdf_caja(df_caja_f, fd, fh, df_caja_f['Entrada'].sum(), df_caja_f['Salida'].sum(), libro['Saldo'].iloc[-1])
                     st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
             except Exception as e: st.error(f"Error en Caja: {e}")
 
-        # --- PESTAÑA CONFIG (Corregida) ---
+        # --- CAJA DIVISAS (NUEVO MÓDULO) ---
         with tabs[6]:
+            st.header("💵 Control de Caja en Divisas")
+            st.write("Gestiona el saldo independiente de transacciones en moneda extranjera.")
+            
+            try:
+                df_div = conn.read(worksheet="CAJA_DIVISAS", ttl="10m")
+                if df_div is None or df_div.empty:
+                    df_div = pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
+            except:
+                df_div = pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
+
+            monedas = ["Efectivo USD", "USDT", "Zelle"]
+            tabs_divisas = st.tabs(["💵 Efectivo USD", "🪙 USDT", "🏦 Zelle"])
+            
+            for i, moneda in enumerate(monedas):
+                with tabs_divisas[i]:
+                    st.subheader(f"Movimientos - {moneda}")
+                    
+                    df_m = df_div[df_div["Moneda"] == moneda].copy() if not df_div.empty else pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
+                    
+                    df_m['Ingreso'] = pd.to_numeric(df_m['Ingreso'], errors='coerce').fillna(0)
+                    df_m['Egreso'] = pd.to_numeric(df_m['Egreso'], errors='coerce').fillna(0)
+                    saldo_actual = df_m['Ingreso'].sum() - df_m['Egreso'].sum()
+                    
+                    st.metric(f"SALDO NETO ({moneda})", f"{saldo_actual:,.2f}")
+                    
+                    with st.expander(f"➕ Registrar nuevo movimiento en {moneda}", expanded=False):
+                        c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
+                        with c1:
+                            f_div = st.date_input("Fecha", date.today(), key=f"f_div_{i}")
+                        with c2:
+                            desc_div = st.text_input("Descripción", placeholder="Motivo de la operación...", key=f"desc_div_{i}")
+                        with c3:
+                            tipo_div = st.selectbox("Tipo de Operación", ["Ingreso", "Egreso"], key=f"tipo_div_{i}")
+                        with c4:
+                            monto_div = st.number_input("Monto", min_value=0.01, step=0.01, key=f"monto_div_{i}")
+                            
+                        if st.button(f"💾 Guardar Movimiento en {moneda}", type="primary", key=f"btn_div_{i}"):
+                            if desc_div:
+                                ingreso_val = monto_div if tipo_div == "Ingreso" else 0.0
+                                egreso_val = monto_div if tipo_div == "Egreso" else 0.0
+                                nuevo_div = pd.DataFrame([{
+                                    "Fecha": str(f_div), "Moneda": moneda, "Descripcion": desc_div,
+                                    "Ingreso": ingreso_val, "Egreso": egreso_val
+                                }])
+                                df_div_update = pd.concat([df_div, nuevo_div], ignore_index=True)
+                                try:
+                                    conn.update(worksheet="CAJA_DIVISAS", data=df_div_update)
+                                    st.cache_data.clear()
+                                    st.success(f"¡Movimiento de {moneda} registrado!")
+                                    st.rerun()
+                                except Exception as e: st.error(f"Error al guardar. Asegúrate de crear la pestaña CAJA_DIVISAS en Google Sheets.")
+                            else:
+                                st.error("Por favor, ingresa una descripción.")
+                    
+                    if not df_m.empty:
+                        df_m_show = df_m[['Fecha', 'Descripcion', 'Ingreso', 'Egreso']].copy()
+                        df_m_show['Saldo_Acumulado'] = df_m_show['Ingreso'].cumsum() - df_m_show['Egreso'].cumsum()
+                        st.dataframe(df_m_show, use_container_width=True)
+                    else:
+                        st.info(f"No hay movimientos registrados en {moneda}.")
+
+        # --- CONFIGURACIÓN ---
+        with tabs[7]:
             st.header("⚙️ Configuración")
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("Personal")
                 try:
-                    # Añadimos un TTL de 5 minutos para no saturar la API
-                    df_p = conn.read(worksheet="EMPLEADOS", ttl="5m")
+                    df_p = conn.read(worksheet="EMPLEADOS", ttl="10m")
                     df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
                     if st.button("Guardar Personal"):
                         conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
@@ -411,13 +487,12 @@ if login():
                         st.success("Guardado")
                         st.rerun()
                 except Exception as e:
-                    st.error("Error al leer 'EMPLEADOS'. Verifica el nombre de la pestaña en Sheets.")
+                    st.error("Error al leer 'EMPLEADOS'. Verifica tu conexión.")
 
             with c2:
                 st.subheader("Catálogo de Gastos")
                 try: 
-                    # Usamos TTL para evitar el APIError por exceso de uso
-                    df_g = conn.read(worksheet="CAT_GASTOS", ttl="5m")
+                    df_g = conn.read(worksheet="CAT_GASTOS", ttl="10m")
                     if df_g is None or df_g.empty:
                         df_g = pd.DataFrame(columns=["Tipo_Gasto"])
                     df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
@@ -432,5 +507,3 @@ if login():
                     st.cache_data.clear()
                     st.success("¡Catálogo actualizado!")
                     st.rerun()
-
-
