@@ -421,9 +421,9 @@ if login():
                     st.success("Guardado")
             with c2:
                 st.subheader("Catálogo de Gastos")
-                try: df_g = conn.read(worksheet="CAT_GASTOS")
-                except: df_g = pd.DataFrame(columns=["Tipo_Gasto"])
-                df_ge = st.data_editor(df_g, num_rows="dynamic", key="ed_gast")
-                if st.button("Guardar Catálogo"):
-                    conn.update(worksheet="CAT_GASTOS", data=df_ge.fillna(""))
-                    st.success("Guardado")
+    try: 
+        df_g = conn.read(worksheet="CAT_GASTOS")
+        # Esta línea asegura que la columna sea texto
+        df_g['Tipo_Gasto'] = df_g['Tipo_Gasto'].astype(str) 
+    except: 
+        df_g = pd.DataFrame(columns=["Tipo_Gasto"])
