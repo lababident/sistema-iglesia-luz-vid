@@ -369,9 +369,9 @@ if login():
         with tabs[5]:
             st.header("🏧 Estado de Caja")
             try:
-                df_i = conn.read(worksheet="INGRESOS", ttl="0m")
-                df_ef = conn.read(worksheet="EGRESOS", ttl="0m")
-                df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="0m")
+                df_i = conn.read(worksheet="INGRESOS", ttl="2m")
+                df_ef = conn.read(worksheet="EGRESOS", ttl="2m")
+                df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="2m")
                 df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
                 df_i_std['Salida'] = 0.0
                 df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].rename(columns={'Empleado_Beneficiario':'Descripción', 'Total_Bs':'Salida'})
@@ -432,3 +432,4 @@ if login():
                     st.cache_data.clear()
                     st.success("¡Catálogo actualizado!")
                     st.rerun()
+
