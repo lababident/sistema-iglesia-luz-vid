@@ -253,6 +253,47 @@ def generar_pdf_ingresos(df_resumen, f_ini, f_fin, total_bs, apostol, presbiteri
         pdf.cell(50, 8, diezmo_str, 1, 1, 'R')
     return pdf.output(dest="S").encode("latin-1")
 
+def generar_pdf_caja(df, f_ini, f_fin, t_ing, t_egr, saldo_n):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Encabezado
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(190, 10, txt="Iglesia Cristiana Luz y Vida", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(190, 8, txt="ESTADO DE CUENTA - LIBRO MAYOR", ln=True, align='C')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(190, 7, txt=f"Desde: {f_ini} hasta: {f_fin}", ln=True, align='C')
+    pdf.ln(5)
+
+    # Resumen Financiero
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(63, 8, f"INGRESOS: {t_ing:,.2f} Bs", 1, 0, 'C', True)
+    pdf.cell(63, 8, f"EGRESOS: {t_egr:,.2f} Bs", 1, 0, 'C', True)
+    pdf.cell(64, 8, f"SALDO NETO: {saldo_n:,.2f} Bs", 1, 1, 'C', True)
+    pdf.ln(5)
+
+    # Tabla de Movimientos
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(25, 8, "Fecha", 1, 0, 'C')
+    pdf.cell(85, 8, "Descripción", 1, 0, 'C')
+    pdf.cell(25, 8, "Entrada", 1, 0, 'C')
+    pdf.cell(25, 8, "Salida", 1, 0, 'C')
+    pdf.cell(30, 8, "Saldo Acum.", 1, 1, 'C')
+
+    pdf.set_font("Arial", '', 8)
+    for i, row in df.iterrows():
+        # Limpieza de texto para evitar errores de codificación en Barinas
+        desc = str(row['Descripción'])[:50].encode('latin-1', 'replace').decode('latin-1')
+        pdf.cell(25, 7, str(row['Fecha']), 1, 0, 'C')
+        pdf.cell(85, 7, desc, 1, 0, 'L')
+        pdf.cell(25, 7, f"{row['Entrada']:,.2f}", 1, 0, 'R')
+        pdf.cell(25, 7, f"{row['Salida']:,.2f}", 1, 0, 'R')
+        pdf.cell(30, 7, f"{row['Saldo']:,.2f}", 1, 1, 'R')
+    
+    return pdf.output(dest="S").encode("latin-1")
+
 # --- EJECUCIÓN PRINCIPAL ---
 if login():
     aplicar_estetica()
@@ -270,8 +311,8 @@ if login():
     METODOS = ["Bolivares en Efectivo", "USD en Efectivo", "Transferencia / PM", "Punto"]
 
     rol = st.session_state.usuario_actual
-    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "👥 CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
-    tabs = st.tabs(titulos)
+titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "👥 CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
+tabs = st.tabs(titulos)
 
     with tabs[0]:
         st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
@@ -418,6 +459,86 @@ if login():
                 st.plotly_chart(fig_e)
         except: st.info("No hay datos de egresos para el gráfico.")
 
+# --- PESTAÑA CAJA (Libro Mayor) ---
+    with tabs[5]:
+        st.header("🏧 Estado de Caja y Saldo Neto")
+        
+        try:
+            # 1. Cargar todas las fuentes de datos
+            df_i = conn.read(worksheet="INGRESOS", ttl="0m")
+            df_ef = conn.read(worksheet="EGRESOS", ttl="0m")
+            df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="0m")
+
+            # 2. Estandarizar Ingresos
+            df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].copy()
+            df_i_std.columns = ['Fecha', 'Descripción', 'Entrada']
+            df_i_std['Salida'] = 0.0
+
+            # 3. Estandarizar Egresos Fijos
+            df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].copy()
+            df_ef_std.columns = ['Fecha', 'Descripción', 'Salida']
+            df_ef_std['Entrada'] = 0.0
+
+            # 4. Estandarizar Otros Egresos
+            df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].copy()
+            df_eo_std.columns = ['Fecha', 'Descripción', 'Salida']
+            df_eo_std['Entrada'] = 0.0
+
+            # 5. Unificar todo en el Libro Mayor
+            libro_mayor = pd.concat([df_i_std, df_ef_std, df_eo_std], ignore_index=True)
+            libro_mayor['Fecha'] = pd.to_datetime(libro_mayor['Fecha']).dt.date
+            libro_mayor = libro_mayor.sort_values(by='Fecha')
+
+            # --- Filtros de Fecha para Caja ---
+            col_f1, col_f2 = st.columns(2)
+            f_desde = col_f1.date_input("Ver desde", date.today().replace(day=1), key="caja_desde")
+            f_hasta = col_f2.date_input("Ver hasta", date.today(), key="caja_hasta")
+
+            mask_caja = (libro_mayor['Fecha'] >= f_desde) & (libro_mayor['Fecha'] <= f_hasta)
+            df_caja_filtrada = libro_mayor.loc[mask_caja].copy()
+
+            # 6. Cálculo de Saldo Acumulado
+            # Primero calculamos el saldo de todo el historial para que sea real
+            libro_mayor['Saldo'] = libro_mayor['Entrada'].cumsum() - libro_mayor['Salida'].cumsum()
+            
+            # Ahora mostramos solo el rango filtrado pero con el saldo correcto
+            df_final_caja = libro_mayor.loc[mask_caja]
+
+            # 7. Métricas visuales
+            total_in = df_caja_filtrada['Entrada'].sum()
+            total_out = df_caja_filtrada['Salida'].sum()
+            saldo_actual = libro_mayor['Saldo'].iloc[-1] if not libro_mayor.empty else 0
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Ingresos (Período)", f"{total_in:,.2f} Bs", delta_color="normal")
+            m2.metric("Total Egresos (Período)", f"- {total_out:,.2f} Bs", delta_color="inverse")
+            m3.metric("SALDO NETO EN CAJA", f"{saldo_actual:,.2f} Bs")
+
+            st.markdown("---")
+            # Generar los datos para el PDF
+            pdf_caja = generar_pdf_caja(
+                df_final_caja, 
+                f_desde, 
+                f_hasta, 
+                total_in, 
+                total_out, 
+                saldo_actual
+            )
+
+            # Botón de descarga funcional
+            st.download_button(
+                label="📄 DESCARGAR ESTADO DE CUENTA (PDF)",
+                data=pdf_caja,
+                file_name=f"Estado_Caja_{f_desde}_al_{f_hasta}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
+            )
+
+        except Exception as e:
+            st.warning("Para ver la caja, asegúrate de que existan registros en Ingresos y Egresos.")
+            st.error(f"Error: {e}")
+
     # --- PESTAÑA CONFIG (Personal + Catálogo de Gastos) (PASO 2) ---
     if rol in ["admin", "tesoreria"]:
         with tabs[5]:
@@ -438,3 +559,4 @@ if login():
                 if st.button("💾 Guardar Catálogo"):
                     conn.update(worksheet="CAT_GASTOS", data=df_g_edit.fillna(""))
                     st.success("Actualizado")
+
