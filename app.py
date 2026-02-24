@@ -240,11 +240,19 @@ if login():
 
     rol = st.session_state.usuario_actual
     
-    # NUEVA PESTAÑA AÑADIDA: CAJA DIVISAS
-    titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "💵 CAJA DIVISAS", "⚙️ CONFIG"] if rol in ["admin", "tesoreria"] else ["🏠 INICIO", "📊 INFORMES"]
+    # LÓGICA DE PESTAÑAS INTELIGENTE POR ROL
+    if rol in ["admin", "tesoreria"]:
+        titulos = ["🏠 INICIO", "📥 INGRESOS", "📤 EGRESOS FIJOS", "🛠️ OTROS EGRESOS", "📊 INFORMES", "🏧 CAJA", "💵 CAJA DIVISAS", "⚙️ CONFIG"]
+        idx_inicio, idx_ingresos, idx_egresos, idx_otros, idx_informes, idx_caja, idx_divisas, idx_config = 0, 1, 2, 3, 4, 5, 6, 7
+    else:
+        # Rol Pastoral
+        titulos = ["🏠 INICIO", "📊 INFORMES", "🏧 CAJA", "💵 CAJA DIVISAS"]
+        idx_inicio, idx_informes, idx_caja, idx_divisas = 0, 1, 2, 3
+        
     tabs = st.tabs(titulos)
 
-    with tabs[0]:
+    # --- INICIO (TODOS LOS ROLES) ---
+    with tabs[idx_inicio]:
         st.markdown(f"<h4 style='text-align: right; color: #8D6E63;'>Bienvenido, {rol.capitalize()}</h4>", unsafe_allow_html=True)
         c_i1, c_i2, c_i3 = st.columns([1, 2, 1])
         with c_i2:
@@ -255,9 +263,9 @@ if login():
             st.session_state.autenticado = False
             st.rerun()
 
+    # --- MÓDULOS DE CARGA (SOLO ADMIN/TESORERÍA) ---
     if rol in ["admin", "tesoreria"]:
-        # --- INGRESOS ---
-        with tabs[1]:
+        with tabs[idx_ingresos]:
             st.subheader("📥 Cargar Nuevo Registro")
             if "key_ing" not in st.session_state: st.session_state.key_ing = 0
             with st.container(border=True):
@@ -302,8 +310,7 @@ if login():
                             st.rerun()
                         except Exception as e: st.error(f"Error: {e}")
 
-        # --- EGRESOS FIJOS ---
-        with tabs[2]:
+        with tabs[idx_egresos]:
             st.header("📤 Registro de Egresos Fijos")
             if "pdf_eg" in st.session_state:
                 st.success(f"✅ Recibo Nro: {st.session_state.nro_eg}")
@@ -331,8 +338,7 @@ if login():
                     st.cache_data.clear()
                     st.rerun()
 
-        # --- OTROS EGRESOS ---
-        with tabs[3]:
+        with tabs[idx_otros]:
             st.header("🛠️ Otros Egresos")
             try:
                 df_cat = conn.read(worksheet="CAT_GASTOS", ttl="10m")
@@ -355,9 +361,8 @@ if login():
                     st.cache_data.clear()
                     st.rerun()
 
-    # --- INFORMES ---
-    idx_inf = 4 if rol in ["admin", "tesoreria"] else 1
-    with tabs[idx_inf]:
+    # --- INFORMES (TODOS LOS ROLES) ---
+    with tabs[idx_informes]:
         st.header("📊 Reportes")
         f_ini = st.date_input("Desde", date.today().replace(day=1), key="inf_desde")
         f_fin = st.date_input("Hasta", date.today(), key="inf_hasta")
@@ -373,69 +378,69 @@ if login():
                 st.plotly_chart(fig_e)
         except: st.info("No hay datos para graficar.")
 
-    if rol in ["admin", "tesoreria"]:
-        # --- CAJA EN BOLÍVARES ---
-        with tabs[5]:
-            st.header("🏧 Estado de Caja (Bs)")
-            try:
-                df_i = conn.read(worksheet="INGRESOS", ttl="10m")
-                df_ef = conn.read(worksheet="EGRESOS", ttl="10m")
-                df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
-                
-                df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
-                df_i_std['Salida'] = 0.0
-                df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].rename(columns={'Empleado_Beneficiario':'Descripción', 'Total_Bs':'Salida'})
-                df_ef_std['Entrada'] = 0.0
-                df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].rename(columns={'Descripcion':'Descripción', 'Monto':'Salida'})
-                df_eo_std['Entrada'] = 0.0
-                
-                libro = pd.concat([df_i_std, df_ef_std, df_eo_std]).sort_values('Fecha')
-                libro['Fecha'] = pd.to_datetime(libro['Fecha']).dt.date
-                libro['Saldo'] = libro['Entrada'].cumsum() - libro['Salida'].cumsum()
-                
-                col_c1, col_c2 = st.columns(2)
-                fd = col_c1.date_input("Desde", date.today().replace(day=1), key="caja_fd")
-                fh = col_c2.date_input("Hasta", date.today(), key="caja_fh")
-                df_caja_f = libro[(libro['Fecha'] >= fd) & (libro['Fecha'] <= fh)]
-                
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Ingresos", f"{df_caja_f['Entrada'].sum():,.2f}")
-                m2.metric("Egresos", f"{df_caja_f['Salida'].sum():,.2f}")
-                m3.metric("Saldo Final", f"{libro['Saldo'].iloc[-1] if not libro.empty else 0:,.2f}")
-                
-                st.dataframe(df_caja_f, use_container_width=True)
-                if st.button("📄 GENERAR PDF DE CAJA"):
-                    pdf_c = generar_pdf_caja(df_caja_f, fd, fh, df_caja_f['Entrada'].sum(), df_caja_f['Salida'].sum(), libro['Saldo'].iloc[-1])
-                    st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
-            except Exception as e: st.error(f"Error en Caja: {e}")
-
-        # --- CAJA DIVISAS (NUEVO MÓDULO) ---
-        with tabs[6]:
-            st.header("💵 Control de Caja en Divisas")
-            st.write("Gestiona el saldo independiente de transacciones en moneda extranjera.")
+    # --- CAJA EN BOLÍVARES (TODOS LOS ROLES) ---
+    with tabs[idx_caja]:
+        st.header("🏧 Estado de Caja (Bs)")
+        try:
+            df_i = conn.read(worksheet="INGRESOS", ttl="10m")
+            df_ef = conn.read(worksheet="EGRESOS", ttl="10m")
+            df_eo = conn.read(worksheet="OTROS_EGRESOS", ttl="10m")
             
-            try:
-                df_div = conn.read(worksheet="CAJA_DIVISAS", ttl="10m")
-                if df_div is None or df_div.empty:
-                    df_div = pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
-            except:
+            df_i_std = df_i[['Fecha', 'Red', 'Total_Bs']].rename(columns={'Red':'Descripción', 'Total_Bs':'Entrada'})
+            df_i_std['Salida'] = 0.0
+            df_ef_std = df_ef[['Fecha', 'Empleado_Beneficiario', 'Total_Bs']].rename(columns={'Empleado_Beneficiario':'Descripción', 'Total_Bs':'Salida'})
+            df_ef_std['Entrada'] = 0.0
+            df_eo_std = df_eo[['Fecha', 'Descripcion', 'Monto']].rename(columns={'Descripcion':'Descripción', 'Monto':'Salida'})
+            df_eo_std['Entrada'] = 0.0
+            
+            libro = pd.concat([df_i_std, df_ef_std, df_eo_std]).sort_values('Fecha')
+            libro['Fecha'] = pd.to_datetime(libro['Fecha']).dt.date
+            libro['Saldo'] = libro['Entrada'].cumsum() - libro['Salida'].cumsum()
+            
+            col_c1, col_c2 = st.columns(2)
+            fd = col_c1.date_input("Desde", date.today().replace(day=1), key="caja_fd")
+            fh = col_c2.date_input("Hasta", date.today(), key="caja_fh")
+            df_caja_f = libro[(libro['Fecha'] >= fd) & (libro['Fecha'] <= fh)]
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Ingresos", f"{df_caja_f['Entrada'].sum():,.2f}")
+            m2.metric("Egresos", f"{df_caja_f['Salida'].sum():,.2f}")
+            m3.metric("Saldo Final", f"{libro['Saldo'].iloc[-1] if not libro.empty else 0:,.2f}")
+            
+            st.dataframe(df_caja_f, use_container_width=True)
+            if st.button("📄 GENERAR PDF DE CAJA"):
+                pdf_c = generar_pdf_caja(df_caja_f, fd, fh, df_caja_f['Entrada'].sum(), df_caja_f['Salida'].sum(), libro['Saldo'].iloc[-1])
+                st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
+        except Exception as e: st.error(f"Error en Caja: {e}")
+
+    # --- CAJA DIVISAS (TODOS LOS ROLES - EDICIÓN RESTRINGIDA) ---
+    with tabs[idx_divisas]:
+        st.header("💵 Control de Caja en Divisas")
+        st.write("Vista de saldos y movimientos en moneda extranjera.")
+        
+        try:
+            df_div = conn.read(worksheet="CAJA_DIVISAS", ttl="10m")
+            if df_div is None or df_div.empty:
                 df_div = pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
+        except:
+            df_div = pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
 
-            monedas = ["Efectivo USD", "USDT", "Zelle"]
-            tabs_divisas = st.tabs(["💵 Efectivo USD", "🪙 USDT", "🏦 Zelle"])
-            
-            for i, moneda in enumerate(monedas):
-                with tabs_divisas[i]:
-                    st.subheader(f"Movimientos - {moneda}")
-                    
-                    df_m = df_div[df_div["Moneda"] == moneda].copy() if not df_div.empty else pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
-                    
-                    df_m['Ingreso'] = pd.to_numeric(df_m['Ingreso'], errors='coerce').fillna(0)
-                    df_m['Egreso'] = pd.to_numeric(df_m['Egreso'], errors='coerce').fillna(0)
-                    saldo_actual = df_m['Ingreso'].sum() - df_m['Egreso'].sum()
-                    
-                    st.metric(f"SALDO NETO ({moneda})", f"{saldo_actual:,.2f}")
-                    
+        monedas = ["Efectivo USD", "USDT", "Zelle"]
+        tabs_divisas = st.tabs(["💵 Efectivo USD", "🪙 USDT", "🏦 Zelle"])
+        
+        for i, moneda in enumerate(monedas):
+            with tabs_divisas[i]:
+                st.subheader(f"Movimientos - {moneda}")
+                
+                df_m = df_div[df_div["Moneda"] == moneda].copy() if not df_div.empty else pd.DataFrame(columns=["Fecha", "Moneda", "Descripcion", "Ingreso", "Egreso"])
+                df_m['Ingreso'] = pd.to_numeric(df_m['Ingreso'], errors='coerce').fillna(0)
+                df_m['Egreso'] = pd.to_numeric(df_m['Egreso'], errors='coerce').fillna(0)
+                saldo_actual = df_m['Ingreso'].sum() - df_m['Egreso'].sum()
+                
+                st.metric(f"SALDO NETO ({moneda})", f"{saldo_actual:,.2f}")
+                
+                # EL BOTÓN DE AGREGAR SOLO LO VEN LOS ADMINISTRADORES Y TESORERÍA
+                if rol in ["admin", "tesoreria"]:
                     with st.expander(f"➕ Registrar nuevo movimiento en {moneda}", expanded=False):
                         c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
                         with c1:
@@ -464,16 +469,17 @@ if login():
                                 except Exception as e: st.error(f"Error al guardar. Asegúrate de crear la pestaña CAJA_DIVISAS en Google Sheets.")
                             else:
                                 st.error("Por favor, ingresa una descripción.")
-                    
-                    if not df_m.empty:
-                        df_m_show = df_m[['Fecha', 'Descripcion', 'Ingreso', 'Egreso']].copy()
-                        df_m_show['Saldo_Acumulado'] = df_m_show['Ingreso'].cumsum() - df_m_show['Egreso'].cumsum()
-                        st.dataframe(df_m_show, use_container_width=True)
-                    else:
-                        st.info(f"No hay movimientos registrados en {moneda}.")
+                
+                if not df_m.empty:
+                    df_m_show = df_m[['Fecha', 'Descripcion', 'Ingreso', 'Egreso']].copy()
+                    df_m_show['Saldo_Acumulado'] = df_m_show['Ingreso'].cumsum() - df_m_show['Egreso'].cumsum()
+                    st.dataframe(df_m_show, use_container_width=True)
+                else:
+                    st.info(f"No hay movimientos registrados en {moneda}.")
 
-        # --- CONFIGURACIÓN ---
-        with tabs[7]:
+    # --- CONFIGURACIÓN (SOLO ADMIN/TESORERÍA) ---
+    if rol in ["admin", "tesoreria"]:
+        with tabs[idx_config]:
             st.header("⚙️ Configuración")
             c1, c2 = st.columns(2)
             with c1:
