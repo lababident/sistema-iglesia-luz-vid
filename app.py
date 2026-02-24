@@ -408,22 +408,41 @@ if login():
                     st.download_button("🖨️ Descargar Reporte de Caja", data=pdf_c, file_name="Caja.pdf")
             except Exception as e: st.error(f"Error en Caja: {e}")
 
-        # --- PESTAÑA CONFIG ---
-        with tabs[6]:
-            st.header("⚙️ Configuración")
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Personal")
-                df_p = conn.read(worksheet="EMPLEADOS")
-                df_pe = st.data_editor(df_p, num_rows="dynamic", key="ed_pers")
-                if st.button("Guardar Personal"):
-                    conn.update(worksheet="EMPLEADOS", data=df_pe.fillna(""))
-                    st.success("Guardado")
-            with c2:
-                st.subheader("Catálogo de Gastos")
-    try: 
-        df_g = conn.read(worksheet="CAT_GASTOS")
-        # Esta línea asegura que la columna sea texto
-        df_g['Tipo_Gasto'] = df_g['Tipo_Gasto'].astype(str) 
-    except: 
-        df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+        st.subheader("🛠️ Catálogo de Gastos")
+                try: 
+                    # Intentamos leer la hoja
+                    df_g = conn.read(worksheet="CAT_GASTOS", ttl="0m")
+                    
+                    # Si la hoja existe pero está totalmente vacía o sin la columna correcta
+                    if df_g is None or df_g.empty or "Tipo_Gasto" not in df_g.columns:
+                        df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+                    
+                    # Forzamos a que la columna sea tratada como texto para evitar el recuadro rojo
+                    df_g["Tipo_Gasto"] = df_g["Tipo_Gasto"].astype(str).replace("nan", "")
+                except: 
+                    # Si la pestaña ni siquiera existe en el Excel
+                    df_g = pd.DataFrame(columns=["Tipo_Gasto"])
+                
+                # Usamos column_config para asegurar que el editor sepa que es TEXTO
+                df_ge = st.data_editor(
+                    df_g, 
+                    num_rows="dynamic", 
+                    key="ed_gast",
+                    use_container_width=True,
+                    column_config={
+                        "Tipo_Gasto": st.column_config.TextColumn(
+                            "Tipo de Gasto",
+                            help="Escribe el nombre del gasto y presiona Enter",
+                            placeholder="Ej: Limpieza, Papelería...",
+                            required=True,
+                        )
+                    }
+                )
+                
+                if st.button("💾 Guardar Catálogo"):
+                    # Limpiamos filas vacías antes de guardar
+                    df_guardar = df_ge[df_ge["Tipo_Gasto"].str.strip() != ""]
+                    conn.update(worksheet="CAT_GASTOS", data=df_guardar)
+                    st.cache_data.clear()
+                    st.success("¡Catálogo actualizado correctamente!")
+                    st.rerun()
